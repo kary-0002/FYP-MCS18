@@ -23,10 +23,10 @@ export default function CanvasPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-layout min-h-screen bg-background">
       <Header />
       
-      <main className="container mx-auto px-4 py-12">
+      <main className="container mx-auto px-4 pb-12">
         <div className="w-full max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <h1>This is the Canvas Page</h1>        

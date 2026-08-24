@@ -28,20 +28,17 @@ export default function Home() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-layout min-h-screen bg-background">
       <Header />
 
-      <main className="container mx-auto px-4 py-12">
-        <div className="space-y-16">
-          <div className="text-center max-w-3xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm mb-6">
-              <Sparkles className="w-4 h-4" />
-              <span>Annotation</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4 text-balance">
+      <main className="px-4 pb-12">
+        <div className="space-y-14">
+          <div className="cut-panel border border-border bg-card px-6 py-14 text-center md:px-12">
+            <div className="section-kicker justify-center"><Sparkles className="w-3.5 h-3.5" /><span>EEG workspace</span></div>
+            <h1 className="mx-auto max-w-3xl text-4xl font-bold tracking-tight text-foreground md:text-6xl text-balance">
               EEG Annotator and Feedback Recommendation
             </h1>
-            <p className="text-lg text-muted-foreground text-pretty">
+            <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground text-pretty">
               Upload EDF files, view them, annotate and get feedback
               recommendations
             </p>
@@ -60,13 +57,13 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {features.map((feature) => (
-              <Card key={feature.title} className="p-6 text-center">
-                <div className="inline-flex p-3 rounded-lg bg-primary/10 mb-4">
+              <Card key={feature.title} className="group p-6 text-center transition-transform duration-200 hover:-translate-y-1 hover:border-primary/60">
+                <div className="mb-4 flex h-12 w-full items-center justify-center gap-2 border border-primary/30 bg-primary/10 px-3 transition-colors group-hover:bg-primary/20">
                   <feature.icon className="w-6 h-6 text-primary" />
+                  <h3 className="font-semibold text-foreground">
+                    {feature.title}
+                  </h3>
                 </div>
-                <h3 className="font-semibold text-foreground mb-2">
-                  {feature.title}
-                </h3>
                 <p className="text-sm text-muted-foreground">
                   {feature.description}
                 </p>

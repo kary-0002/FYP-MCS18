@@ -204,16 +204,16 @@ export default function EDFViewer() {
                     flex-col
                     items-center
                     justify-center
-                    rounded-xl
-                    border-2
+                    border
                     border-dashed
-                    border-gray-300
-                    bg-gray-50
+                    border-dashed
+                    border-border
+                    bg-card
                     p-8
                     text-center
                     transition
-                    hover:border-gray-400
-                    hover:bg-gray-100
+                    hover:border-primary
+                    hover:bg-primary/5
                 "
             >
                 <input
@@ -230,7 +230,7 @@ export default function EDFViewer() {
                             Reading EDF file...
                         </div>
 
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                             Please wait.
                         </div>
                     </>
@@ -240,7 +240,7 @@ export default function EDFViewer() {
                             Upload EDF file
                         </div>
 
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-muted-foreground">
                             Click or drag an .edf file here
                         </div>
                     </>
@@ -249,7 +249,7 @@ export default function EDFViewer() {
 
             {/* Error */}
             {error && (
-                <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                <div className="border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
                     <strong>Error:</strong> {error}
                 </div>
             )}
@@ -257,7 +257,7 @@ export default function EDFViewer() {
             {/* EDF information */}
             {edf && (
                 <>
-                    <div className="rounded-lg border bg-white p-4">
+                    <div className="cut-panel border bg-card p-4">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                             <div className="text-lg font-semibold">
                                 {edf.fileName}
@@ -379,15 +379,15 @@ function SignalChart({
     }, [signal.samples, time]);
 
     return (
-        <div className="overflow-hidden rounded-lg border bg-white">
+        <div className="cut-panel overflow-hidden border bg-card">
             {/* Channel header */}
-            <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-3">
+            <div className="flex items-center justify-between border-b bg-secondary/40 px-4 py-3">
                 <div>
                     <div className="font-semibold">
                         {signal.label}
                     </div>
 
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                         {signal.sampleRate} Hz
                         {signal.unit
                             ? ` • ${signal.unit}`
@@ -395,7 +395,7 @@ function SignalChart({
                     </div>
                 </div>
 
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-muted-foreground">
                     {signal.samples.length.toLocaleString()} samples
                 </div>
             </div>
@@ -501,7 +501,7 @@ function Info({
 }) {
     return (
         <div>
-            <div className="text-xs uppercase tracking-wide text-gray-500">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
                 {label}
             </div>
 

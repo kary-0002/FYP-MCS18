@@ -145,7 +145,7 @@ export function FileLibrary() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <Card
-        className="border-2 border-dashed p-8 text-center cursor-pointer hover:border-primary/50"
+        className="cursor-pointer border border-dashed p-8 text-center transition-all hover:border-primary hover:bg-primary/5"
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
@@ -178,7 +178,7 @@ export function FileLibrary() {
       {error && <p className="text-sm text-destructive">{error}</p>}
       {status && <p className="text-sm text-muted-foreground">{status}</p>}
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading files...</p>
         ) : files.length === 0 ? (
@@ -189,7 +189,7 @@ export function FileLibrary() {
           files.map((file) => (
             <Card
               key={file.id}
-              className="flex items-center justify-between gap-4 p-4"
+              className="flex min-h-36 flex-col items-start justify-between gap-4 p-4 transition-all hover:border-primary/60 hover:bg-primary/5"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <FileText className="h-5 w-5 shrink-0 text-primary" />
@@ -200,10 +200,11 @@ export function FileLibrary() {
                   </p>
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex w-full shrink-0 gap-2">
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 border-primary/40 bg-secondary text-foreground hover:border-primary hover:bg-accent dark:border-primary/50 dark:bg-muted dark:hover:bg-accent"
                   onClick={() => void handleDownload(file)}
                 >
                   Open
@@ -211,6 +212,7 @@ export function FileLibrary() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="border border-destructive/40 bg-destructive/10 text-destructive hover:border-destructive hover:bg-destructive/20 hover:text-destructive"
                   onClick={() => void handleDelete(file)}
                 >
                   <Trash2 className="h-4 w-4" />

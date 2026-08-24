@@ -136,7 +136,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const isSignup = mode === "signup";
 
   return (
-    <Card className="mx-auto w-full max-w-md p-8 space-y-6">
+    <Card className="mx-auto w-full max-w-md space-y-6 p-8">
       <div className="space-y-1 text-center">
         <h1 className="text-2xl font-bold text-foreground">
           {isSignup ? "Create an account" : "Sign in"}
@@ -149,7 +149,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       <Button
         type="button"
         variant="outline"
-        className="w-full gap-2"
+        className="w-full gap-2 bg-secondary hover:bg-accent dark:bg-secondary dark:hover:bg-accent"
         onClick={handleGoogle}
       >
         <GoogleIcon />
@@ -170,6 +170,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             type="email"
             autoComplete="email"
             required
+            className="bg-muted/70 focus-visible:border-primary dark:bg-muted/70"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
@@ -182,6 +183,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             autoComplete={isSignup ? "new-password" : "current-password"}
             required
             minLength={6}
+            className="bg-muted/70 focus-visible:border-primary dark:bg-muted/70"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />

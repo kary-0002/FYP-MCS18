@@ -134,9 +134,9 @@ export default function ResultsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="app-layout min-h-screen bg-background">
         <Header />
-        <main className="container mx-auto px-4 py-12">
+        <main className="container mx-auto px-4 pb-12">
           <div className="flex items-center justify-center min-h-[60vh]">
             <div className="animate-pulse text-muted-foreground">Loading results...</div>
           </div>
@@ -146,10 +146,10 @@ export default function ResultsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-layout min-h-screen bg-background">
       <Header />
       
-      <main className="container mx-auto px-4 py-12">
+      <main className="container mx-auto px-4 pb-12">
         <div className="w-full max-w-4xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
