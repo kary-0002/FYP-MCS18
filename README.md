@@ -1,4 +1,4 @@
-# FFAMCS18 FYP: Web-based EEG Viewer, Annotator, and Feedback Recommendations
+# MCS18 FYP: Web-based EEG Viewer, Annotator, and Feedback Recommendations
 
 ## 👥 Team Members
 
