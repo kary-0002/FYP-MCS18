@@ -5,14 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 
 # Setting up CORS middleware -> allow requests from Vite (Port 5173)
-origins = [
-    "http://localhost:5173",
-    "localhost:5173"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:5173",
+        "localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
