@@ -7,8 +7,9 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'PatternAI - Video Pattern Recognition',
-  description: 'AI-powered video analysis to detect patterns with confidence scoring',
+  title: 'EEG Annotator — view, annotate, and review EDF files',
+  description:
+    'Web platform to view and annotate EEG files in .edf format, with feedback recommendations from a model trained on the Siena EEG dataset.',
   generator: 'v0.app',
   icons: {
     icon: [
