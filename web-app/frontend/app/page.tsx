@@ -44,16 +44,16 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex items-center justify-center gap-3">
+          {/* <div className="flex items-center justify-center gap-3">
             <Button onClick={() => router.push("/canvas")} className="gap-2">
               <RotateCcw className="w-4 h-4" />
-              Go to Canvas
+              Go to EDF V
             </Button>
             <Button onClick={() => router.push("/edf-reader")} className="gap-2">
               <RotateCcw className="w-4 h-4" />
               EDF Reader
             </Button>
-          </div>
+          </div> */}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {features.map((feature) => (
