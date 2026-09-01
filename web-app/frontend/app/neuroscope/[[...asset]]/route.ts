@@ -24,7 +24,7 @@ export async function GET(
 
   const sourcePath = path.resolve(
     process.cwd(),
-    "../../Prawin's Part",
+    "../../prawin-edf-viewer",
     selectedAsset.file,
   );
   const contents = await readFile(sourcePath);
