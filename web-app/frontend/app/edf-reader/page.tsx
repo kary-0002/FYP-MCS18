@@ -107,7 +107,7 @@ function EDFReaderContent() {
           ref={frameRef}
           src="/neuroscope/"
           title="NeuroScope EDF viewer and annotator"
-          className="h-[calc(100vh-10rem)] min-h-[700px] w-full border border-border bg-white"
+          className="h-[calc(100vh-10rem)] min-h-175 w-full border border-border bg-white"
           onLoad={handleFrameLoad}
         />
       </main>
