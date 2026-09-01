@@ -1,0 +1,52 @@
+:root {
+  --ink: #243330;
+  --muted: #687a76;
+  --line: #b8c8c4;
+  --paper: #eef5f3;
+  --white: #fbfdfc;
+  --mint: #d7ead8;
+  --green: #388b58;
+  --teal: #388b58;
+}
+
+body { background: var(--paper); }
+.empty-state { height: 100vh; padding: 28px; background: radial-gradient(circle at 80% 0, #dceee5 0, transparent 34rem), var(--paper); }
+.upload-panel { width: min(620px, 100%); border: 1px dashed var(--line); background: var(--white); padding: 48px 36px; text-align: center; }
+.empty-state h1 { margin: 10px 0 14px; font-size: 34px; letter-spacing: -1px; }
+.signal-icon { margin: 0 auto 18px; }
+.workspace { height: 100vh; }
+.sidebar, .annotations-panel, .toolbar, .timeline { background: var(--white); }
+.recording-meta { margin: -4px 0 12px; color: var(--muted); font: 10px/1.5 'JetBrains Mono', monospace; overflow-wrap: anywhere; }
+.button, .icon-button, .search, .control select, .annotation, dialog, dialog select, dialog input, dialog textarea, .range-card, .count { border-radius: 0; }
+.button.primary { background: var(--green); border-color: var(--green); }
+.button.primary:hover { background: #2f784c; }
+.annotation-file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.annotation-file-actions .button { padding: 8px 6px; text-align: center; }
+.annotation-file-actions label { grid-column: 1 / -1; }
+.annotation-file-actions .home-link { grid-column: 1 / -1; text-decoration: none; }
+.plot-hint, .selection span, .toast { border-radius: 0; }
+
+body.dark-mode {
+  --ink: #e4ebe8;
+  --muted: #a5b1ae;
+  --line: #4a4f4d;
+  --paper: #2a2a2a;
+  --white: #353535;
+  --mint: #b5cdb6;
+  --green: #8aaa8c;
+  --teal: #9bbb9d;
+  color-scheme: dark;
+}
+
+body.dark-mode .empty-state { background: radial-gradient(circle at 80% 0, #26342b 0, transparent 34rem), #2a2a2a; }
+body.dark-mode .upload-panel, body.dark-mode .sidebar, body.dark-mode .annotations-panel, body.dark-mode .toolbar, body.dark-mode .timeline { background: #353535; }
+body.dark-mode .button, body.dark-mode .icon-button, body.dark-mode .control select { background: #353535; color: var(--ink); }
+body.dark-mode .button.primary { background: var(--green); color: #172019; }
+body.dark-mode .search input, body.dark-mode dialog select, body.dark-mode dialog input, body.dark-mode dialog textarea { background: #292929; color: var(--ink); }
+body.dark-mode .plot-wrap { background: #222; }
+body.dark-mode #eegCanvas { filter: invert(.82) hue-rotate(70deg); }
+body.dark-mode .plot-hint { background: #353535dd; border-color: #555; color: #c9cfcd; }
+body.dark-mode .annotation:hover { background: #3b3f3d; }
+body.dark-mode .range-card { background: #29352e; }
+body.dark-mode dialog { background: #353535; color: var(--ink); }
+body.dark-mode .loading { background: #222c; color: var(--muted); }

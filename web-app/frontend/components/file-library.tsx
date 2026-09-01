@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FileText, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -23,6 +24,7 @@ interface UserFileRow {
 }
 
 export function FileLibrary() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [files, setFiles] = useState<UserFileRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +108,11 @@ export function FileLibrary() {
   }
 
   async function handleDownload(row: UserFileRow) {
+    if (row.kind === "edf") {
+      router.push(`/edf-reader?file=${encodeURIComponent(row.id)}`);
+      return;
+    }
+
     const { data, error: signedError } = await supabase.storage
       .from(FILE_BUCKET)
       .createSignedUrl(row.storage_path, 60);

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SeizureAI — EDF Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="theme.css" />
+</head>
+<body>
+  <input id="edfInput" type="file" accept=".edf,application/octet-stream" hidden />
+  <input id="annotationInput" type="file" accept=".json,application/json" hidden />
+
+  <main>
+    <section id="emptyState" class="empty-state">
+      <div class="upload-panel">
+        <div class="signal-icon"><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="eyebrow">EDF signal review</span>
+        <h1>Open an EEG recording</h1>
+        <p>Choose a local EDF/EDF+ file to view its channels and create annotations. The recording stays on this device.</p>
+        <label class="button primary large" for="edfInput">Choose an EDF file</label>
+      </div>
+      <div class="compatibility"><span>✓ EDF / EDF+</span><span>✓ Siena Scalp EEG</span><span>✓ Local processing</span></div>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <aside class="sidebar">
+        <div class="side-heading"><div><span class="eyebrow">Signals</span><h2>Channels</h2></div><button class="icon-button" id="toggleAll" title="Toggle all">✓</button></div>
+        <div class="recording-meta" id="fileMeta">Recording details</div>
+        <label class="search"><span>⌕</span><input id="channelSearch" placeholder="Filter channels" /></label>
+        <div id="channelList" class="channel-list"></div>
+      </aside>
+
+      <section class="viewer-panel">
+        <div class="toolbar">
+          <div class="transport">
+            <button class="icon-button" id="backButton" title="Previous window">←</button>
+            <button class="icon-button" id="playButton" title="Play">▶</button>
+            <button class="icon-button" id="forwardButton" title="Next window">→</button>
+          </div>
+          <div class="time-readout"><strong id="currentTime">00:00:00.000</strong><span id="duration">/ 00:00:00</span></div>
+          <div class="toolbar-spacer"></div>
+          <label class="control">Window
+            <select id="windowSize"><option value="5">5 sec</option><option value="10" selected>10 sec</option><option value="20">20 sec</option><option value="30">30 sec</option><option value="60">1 min</option></select>
+          </label>
+          <label class="control">Gain
+            <select id="gain"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+          </label>
+          <button class="button compact" id="fitButton">Fit signals</button>
+        </div>
+
+        <div class="plot-wrap" id="plotWrap">
+          <canvas id="eegCanvas"></canvas>
+          <div id="selection" class="selection hidden"><span id="selectionLabel"></span></div>
+          <div id="loading" class="loading hidden"><span></span>Reading signal window…</div>
+          <div class="plot-hint">Drag to select · Scroll to navigate · Ctrl/⌘ + scroll to zoom</div>
+        </div>
+        <div class="timeline"><span id="timelineStart">00:00</span><input id="scrubber" type="range" min="0" max="1000" value="0"><span id="timelineEnd">00:00</span></div>
+      </section>
+
+      <aside class="annotations-panel">
+        <div class="side-heading"><div><span class="eyebrow">Review</span><h2>Annotations</h2></div><span class="count" id="annotationCount">0</span></div>
+        <button class="button primary full" id="newAnnotation" disabled>+ Add annotation</button>
+        <div class="annotation-file-actions">
+          <button class="button ghost" id="importButton">Import JSON</button>
+          <button class="button ghost" id="exportButton">Export JSON</button>
+          <label class="button ghost" for="edfInput">Open another EDF</label>
+          <a class="button ghost home-link" href="/" target="_top">← Back to SeizureAI home</a>
+        </div>
+        <div id="annotationList" class="annotation-list"><div class="aside-empty">Select a region of the waveform to add a clinical annotation.</div></div>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="annotationDialog">
+    <form method="dialog" id="annotationForm">
+      <div class="dialog-head"><div><span class="eyebrow">Selected event</span><h2 id="dialogTitle">New annotation</h2></div><button value="cancel" class="close" aria-label="Close">×</button></div>
+      <div class="range-card"><span>TIME RANGE</span><strong id="dialogRange"></strong></div>
+      <label>Label<select id="annotationLabel" required><option>Seizure</option><option>Spike</option><option>Artifact</option><option>Eye movement</option><option>Sleep event</option><option>Technical issue</option><option>Other</option></select></label>
+      <label>Clinician / researcher notes<textarea id="annotationNotes" rows="4" placeholder="Describe the event, morphology, confidence, or follow-up…"></textarea></label>
+      <label>Channels <input id="annotationChannels" placeholder="All visible channels" /></label>
+      <div class="dialog-actions"><button value="cancel" class="button ghost">Cancel</button><button value="default" class="button primary" id="saveAnnotation">Save annotation</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
