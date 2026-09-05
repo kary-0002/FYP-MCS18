@@ -171,6 +171,24 @@ async function openFile(file) {
     $("#loading").classList.remove("hidden");
     state.file = file;
     state.edf = await parseEDF(file);
+
+    const formData = new FormData();
+formData.append("veeg", file);
+
+const response = await fetch("http://127.0.0.1:8000/upload", {
+  method: "POST",
+  body: formData,
+});
+
+if (!response.ok) {
+  const errorText = await response.text();
+  throw new Error(`Seizure detection failed: ${errorText}`);
+}
+
+const detectionResult = await response.json();
+
+console.log("Seizure detection result:", detectionResult);
+
     state.start = 0;
     state.selection = null;
     const usable = state.edf.signals.filter(
