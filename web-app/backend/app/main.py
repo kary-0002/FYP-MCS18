@@ -1,10 +1,13 @@
 import os
 import tempfile
+import json
+from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.seizure_detection import detect_seizures
+from app.report_generation.mcs18_pipeline import run_pipeline
 
 
 app = FastAPI()
@@ -81,6 +84,57 @@ async def post_upload_veeg(
         # Remove temporary EDF file
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+@app.post("/report")
+async def post_generate_report(
+    veeg: UploadFile = File(...),
+    seizure_results_json: str = Form(...),
+    annotation_results_json: str = Form(...),
+):
+    original_filename = Path(veeg.filename or "").name
+
+    if not original_filename.lower().endswith(".edf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only EDF files are supported."
+        )
+
+    try:
+        seizure_results = json.loads(seizure_results_json)
+        annotation_results = json.loads(annotation_results_json)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid seizure or annotation JSON."
+        )
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = os.path.join(temp_dir, original_filename)
+
+            content = await veeg.read()
+            with open(temp_path, "wb") as temp_file:
+                temp_file.write(content)
+
+            result = run_pipeline(
+                eeg_path=temp_path,
+                seizure_results=seizure_results,
+                annotation_results=annotation_results,
+                output_root="reports"
+            )
+            return result
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc)
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc)
+        )
 
 
 @app.get("/results/{session_id}")
