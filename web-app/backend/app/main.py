@@ -63,7 +63,7 @@ async def post_upload_veeg(
         result = detect_seizures(
             edf_path=temp_path,
             checkpoint_path=MODEL_PATH,
-            threshold=0.8
+            threshold=0.2
         )
 
         # Keep the original uploaded filename in the response
