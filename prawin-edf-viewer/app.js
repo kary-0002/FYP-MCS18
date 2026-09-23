@@ -9,6 +9,7 @@ const state = {
   data: [],
   selection: null,
   annotations: [],
+  seizureDetection: null,
   editing: null,
   playing: null,
   readToken: 0,
@@ -172,22 +173,27 @@ async function openFile(file) {
     state.file = file;
     state.edf = await parseEDF(file);
 
-    const formData = new FormData();
-formData.append("veeg", file);
+    // Run seizure detection separately so it does not block the EDF viewer
+    try {
+      const formData = new FormData();
+      formData.append("veeg", file);
 
-const response = await fetch("http://127.0.0.1:8000/upload", {
-  method: "POST",
-  body: formData,
-});
+      const response = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-if (!response.ok) {
-  const errorText = await response.text();
-  throw new Error(`Seizure detection failed: ${errorText}`);
-}
-
-const detectionResult = await response.json();
-
-console.log("Seizure detection result:", detectionResult);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Seizure detection failed:", errorText);
+      } else {
+        const detectionResult = await response.json();
+        state.seizureDetection = detectionResult;
+        console.log("Seizure detection result:", detectionResult);
+      }
+    } catch (err) {
+      console.error("Seizure detection error:", err);
+    }
 
     state.start = 0;
     state.selection = null;
@@ -586,6 +592,7 @@ $("#exportButton").onclick = () => {
       startTime: state.edf.startTime,
     },
     annotations: state.annotations,
+    seizureDetection: state.seizureDetection,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
