@@ -603,6 +603,57 @@ $("#exportButton").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
+$("#generateReport").onclick = async () => {
+  if (!state.file) return;
+  const button = $("#generateReport");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Generating...";
+  toast("Generating report...");
+  const annotationResults = {
+    schemaVersion: "1.0",
+    exportedAt: new Date().toISOString(),
+    recording: {
+      fileName: state.file.name,
+      fileSize: state.file.size,
+      lastModified: new Date(state.file.lastModified).toISOString(),
+      durationSec: state.edf.duration,
+      startDate: state.edf.startDate,
+      startTime: state.edf.startTime,
+    },
+    annotations: state.annotations,
+  };
+  const formData = new FormData();
+  formData.append("veeg", state.file);
+  formData.append("seizure_results_json", JSON.stringify(state.seizureDetection));
+  formData.append("annotation_results_json", JSON.stringify(annotationResults));
+  try {
+    const response = await fetch("http://127.0.0.1:8000/report", {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || "Report generation failed.");
+    }
+    const pdfBlob = await response.blob();
+    const url = URL.createObjectURL(pdfBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${state.file.name.replace(/\.edf$/i, "")}_report.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast("Report generated");
+  } catch (err) {
+    console.error("Report generation error:", err);
+    alert(err.message || "Could not generate report.");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+};
 $("#importButton").onclick = () => $("#annotationInput").click();
 $("#annotationInput").onchange = async (e) => {
   try {

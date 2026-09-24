@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.seizure_detection import detect_seizures
 from app.report_generation.mcs18_pipeline import run_pipeline
@@ -123,7 +124,13 @@ async def post_generate_report(
                 annotation_results=annotation_results,
                 output_root="reports"
             )
-            return result
+            pdf_path = result["pdf_path"]
+
+            return FileResponse(
+                path=pdf_path,
+                media_type="application/pdf",
+                filename=f"{Path(original_filename).stem}_report.pdf"
+            )
 
     except ValueError as exc:
         raise HTTPException(

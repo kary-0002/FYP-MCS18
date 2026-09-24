@@ -22,6 +22,7 @@ body { background: var(--paper); }
 .button.primary:hover { background: #2f784c; }
 .annotation-file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
 .annotation-file-actions .button { padding: 8px 6px; text-align: center; }
+.annotation-file-actions #generateReport { grid-column: 1 / -1; }
 .annotation-file-actions label { grid-column: 1 / -1; }
 .annotation-file-actions .home-link { grid-column: 1 / -1; text-decoration: none; }
 .plot-hint, .selection span, .toast { border-radius: 0; }
