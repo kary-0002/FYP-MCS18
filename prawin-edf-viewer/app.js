@@ -191,6 +191,7 @@ async function openFile(file) {
         const detectionResult = await response.json();
         state.seizureDetection = detectionResult;
         console.log("Seizure detection result:", detectionResult);
+        renderDetectedSeizures();
       }
     } catch (err) {
       console.error("Seizure detection error:", err);
@@ -444,6 +445,62 @@ function setSelection(a, b) {
   el.classList.remove("hidden");
   $("#selectionLabel").textContent = `${(end - start).toFixed(2)}s`;
   $("#newAnnotation").disabled = false;
+}
+function renderDetectedSeizures() {
+  let section = $("#detectedSeizures");
+
+  if (!section) {
+    section = document.createElement("div");
+    section.id = "detectedSeizures";
+
+    const annotationList = $("#annotationList");
+    annotationList.parentElement.insertBefore(section, annotationList);
+  }
+
+  const seizures = state.seizureDetection?.seizures || [];
+
+  if (!seizures.length) {
+    section.innerHTML = "";
+    return;
+  }
+
+  section.innerHTML = `
+    <div style="margin-top: 18px; margin-bottom: 12px;">
+      <div style="font-weight: 600; margin-bottom: 6px;">
+        Detected Seizures
+      </div>
+      <div id="detectedSeizureList"></div>
+    </div>
+  `;
+
+  const list = $("#detectedSeizureList");
+
+  seizures.forEach((seizure, index) => {
+    const item = document.createElement("button");
+
+    item.type = "button";
+    item.style.display = "block";
+    item.style.width = "100%";
+    item.style.textAlign = "left";
+    item.style.marginBottom = "6px";
+    item.style.padding = "8px";
+    item.style.cursor = "pointer";
+
+    item.textContent =
+      `Seizure ${index + 1}: ${fmt(seizure.start_time, true)} - ${fmt(seizure.end_time, true)}`;
+
+    item.onclick = () => {
+      // Jump slightly before the detected seizure
+      state.start = Math.max(
+        0,
+        seizure.start_time - state.window * 0.15,
+      );
+
+      render();
+    };
+
+    list.appendChild(item);
+  });
 }
 function renderAnnotations() {
   const box = $("#annotationList");
