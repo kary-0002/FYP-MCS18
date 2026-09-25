@@ -171,6 +171,7 @@ async function openFile(file) {
     $("#workspace").classList.remove("hidden");
     $("#loading").classList.remove("hidden");
     state.file = file;
+    state.seizureDetection = null;
     state.edf = await parseEDF(file);
 
     // Run seizure detection separately so it does not block the EDF viewer
@@ -190,6 +191,7 @@ async function openFile(file) {
         const detectionResult = await response.json();
         state.seizureDetection = detectionResult;
         console.log("Seizure detection result:", detectionResult);
+        renderDetectedSeizures();
       }
     } catch (err) {
       console.error("Seizure detection error:", err);
@@ -350,7 +352,47 @@ function draw() {
     }
     c.stroke();
   });
+  drawSeizureDetection(c, left, top, pw, ph);
   drawAnnotations(c, left, top, pw, ph);
+}
+function drawSeizureDetection(c, left, top, pw, ph) {
+  const seizures = state.seizureDetection?.seizures || [];
+
+  seizures
+    .filter(
+      (s) =>
+        s.end_time >= state.start &&
+        s.start_time <= state.start + state.window,
+    )
+    .forEach((s) => {
+      const visibleStart = Math.max(s.start_time, state.start);
+      const visibleEnd = Math.min(
+        s.end_time,
+        state.start + state.window,
+      );
+
+      const x1 =
+        left +
+        ((visibleStart - state.start) / state.window) * pw;
+
+      const x2 =
+        left +
+        ((visibleEnd - state.start) / state.window) * pw;
+
+      // Highlight the detected seizure region
+      c.fillStyle = "rgba(215, 90, 84, 0.14)";
+      c.fillRect(x1, top, Math.max(2, x2 - x1), ph);
+
+      // Draw the start boundary
+      c.fillStyle = "#d75a54";
+      c.fillRect(x1, top, 3, ph);
+
+      // Show detection label
+      c.font = "9px DM Sans";
+      c.textAlign = "left";
+      c.fillStyle = "#d75a54";
+      c.fillText("AI detected seizure", x1 + 5, top + 11);
+    });
 }
 function drawAnnotations(c, left, top, pw, ph) {
   state.annotations
@@ -403,6 +445,62 @@ function setSelection(a, b) {
   el.classList.remove("hidden");
   $("#selectionLabel").textContent = `${(end - start).toFixed(2)}s`;
   $("#newAnnotation").disabled = false;
+}
+function renderDetectedSeizures() {
+  let section = $("#detectedSeizures");
+
+  if (!section) {
+    section = document.createElement("div");
+    section.id = "detectedSeizures";
+
+    const annotationList = $("#annotationList");
+    annotationList.parentElement.insertBefore(section, annotationList);
+  }
+
+  const seizures = state.seizureDetection?.seizures || [];
+
+  if (!seizures.length) {
+    section.innerHTML = "";
+    return;
+  }
+
+  section.innerHTML = `
+    <div style="margin-top: 18px; margin-bottom: 12px;">
+      <div style="font-weight: 600; margin-bottom: 6px;">
+        Detected Seizures
+      </div>
+      <div id="detectedSeizureList"></div>
+    </div>
+  `;
+
+  const list = $("#detectedSeizureList");
+
+  seizures.forEach((seizure, index) => {
+    const item = document.createElement("button");
+
+    item.type = "button";
+    item.style.display = "block";
+    item.style.width = "100%";
+    item.style.textAlign = "left";
+    item.style.marginBottom = "6px";
+    item.style.padding = "8px";
+    item.style.cursor = "pointer";
+
+    item.textContent =
+      `Seizure ${index + 1}: ${fmt(seizure.start_time, true)} - ${fmt(seizure.end_time, true)}`;
+
+    item.onclick = () => {
+      // Jump slightly before the detected seizure
+      state.start = Math.max(
+        0,
+        seizure.start_time - state.window * 0.15,
+      );
+
+      render();
+    };
+
+    list.appendChild(item);
+  });
 }
 function renderAnnotations() {
   const box = $("#annotationList");
