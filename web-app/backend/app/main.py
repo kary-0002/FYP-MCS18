@@ -1,12 +1,12 @@
 import os
 import tempfile
+import shutil
 import json
 from pathlib import Path
-
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-
+from starlette.background import BackgroundTask
 from app.seizure_detection import detect_seizures
 from app.report_generation.mcs18_pipeline import run_pipeline
 
@@ -110,38 +110,34 @@ async def post_generate_report(
             detail="Invalid seizure or annotation JSON."
         )
 
+    work_dir = tempfile.mkdtemp(prefix="eeg-report-")
     try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = os.path.join(temp_dir, original_filename)
+        temp_path = os.path.join(work_dir, original_filename)
+        content = await veeg.read()
+        with open(temp_path, "wb") as temp_file:
+            temp_file.write(content)
 
-            content = await veeg.read()
-            with open(temp_path, "wb") as temp_file:
-                temp_file.write(content)
+        result = run_pipeline(
+            eeg_path=temp_path,
+            seizure_results=seizure_results,
+            annotation_results=annotation_results,
+            output_root=work_dir
+        )
+        pdf_path = result["pdf_path"]
 
-            result = run_pipeline(
-                eeg_path=temp_path,
-                seizure_results=seizure_results,
-                annotation_results=annotation_results,
-                output_root="reports"
-            )
-            pdf_path = result["pdf_path"]
-
-            return FileResponse(
-                path=pdf_path,
-                media_type="application/pdf",
-                filename=f"{Path(original_filename).stem}_report.pdf"
-            )
+        return FileResponse(
+            path=pdf_path,
+            media_type="application/pdf",
+            filename=f"{Path(original_filename).stem}_report.pdf",
+            background=BackgroundTask(shutil.rmtree, work_dir, ignore_errors=True)
+        )
 
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc)
-        )
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc)
-        )
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/results/{session_id}")
