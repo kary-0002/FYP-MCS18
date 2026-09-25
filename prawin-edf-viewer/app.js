@@ -24,6 +24,8 @@ const colors = {
   Other: "#bd7a9c",
 };
 
+const API_BASE_URL = "https://fyp-api.azutoro.com";
+
 function text(bytes) {
   return new TextDecoder("ascii").decode(bytes);
 }
@@ -179,7 +181,7 @@ async function openFile(file) {
       const formData = new FormData();
       formData.append("veeg", file);
 
-      const response = await fetch("http://127.0.0.1:8000/upload", {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
         body: formData,
       });
@@ -726,7 +728,7 @@ $("#generateReport").onclick = async () => {
   formData.append("seizure_results_json", JSON.stringify(state.seizureDetection));
   formData.append("annotation_results_json", JSON.stringify(annotationResults));
   try {
-    const response = await fetch("http://127.0.0.1:8000/report", {
+    const response = await fetch(`${API_BASE_URL}/report`, {
       method: "POST",
       body: formData,
     });
