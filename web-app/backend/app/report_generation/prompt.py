@@ -247,7 +247,7 @@ def mcs18ReportPrompt(
     if seizure_detection is not None:
         combined_findings["seizure_detection"] = seizure_detection
 
-    if annotations is not None:
+    if annotations is not None and annotations.get("annotations"):
         combined_findings["annotations"] = annotations
 
     findings_json = json.dumps(
@@ -301,21 +301,29 @@ Important rules:
 Task:
 
 === Conclusion ===
-Write a concise professional summary of the available automated EEG findings and, where supplied, the automated seizure-detection results and reviewer annotations.
-Clearly distinguish automated findings from reviewer-provided information.
-If a relevant abnormal automated finding is present, you may briefly describe its general clinical significance. Present this only as a general association, not as a diagnosis or conclusion about this patient.
-State that the findings should be interpreted together with the EEG recording and relevant clinical information.
+Write a concise professional summary of the clinically relevant automated findings.
+- Do not repeat exact frequencies, amplitudes, probability values, timestamps, or channel names unless they are necessary to understand the conclusion.
+- If the "annotations" component is not supplied, do not mention reviewer annotations.
+- Focus on the main background abnormality, the presence or absence of candidate seizure detections, and any clinically relevant reviewer information.
+- If a relevant abnormal automated finding is present, include at most one brief sentence describing its general clinical significance.
+- Present clinical significance only as a general association, not as a diagnosis or conclusion about this patient.
+- When describing general clinical significance, keep it broad and cautious. Do not introduce specific causes or diagnoses that are not supplied in the structured findings.
+  For diffuse background slowing, wording such as "a nonspecific finding that may be associated with diffuse cerebral dysfunction" is appropriate.
+- Do not infer frequency-band labels or other derived interpretations from numerical values unless they are explicitly supplied in the structured findings.
+- State that the findings should be interpreted together with the EEG recording and relevant clinical information.
+- Keep this section to approximately 80 to 120 words.
 
 === Suggested Next Steps ===
-Provide concise, conditional considerations that may help a clinician review or follow up the reported findings.
-- Base suggestions only on the supplied findings, seizure-detection results, reviewer annotations, and recording quality.
-- Suggestions may include direct EEG review, review of candidate intervals, correlation with available video or clinical information, assessment of artifact-affected channels, or further EEG review when appropriate.
+Provide at most 2 concise bullet points describing conditional considerations for clinical review.
+- Each bullet should contain only one sentence.
+- Do not repeat detailed findings already stated elsewhere.
+- Suggestions may include direct EEG review, review of candidate intervals, correlation with available video or clinical information, or assessment of artifact-affected channels where relevant.
 - Do not prescribe treatment.
 - Do not imply that any investigation is mandatory.
-- Do not invent patient-specific circumstances.
-- Omit unnecessary suggestions rather than filling the section artificially.
+- Keep this section to approximately 40 to 60 words.
+- Use "-" for every bullet and place each bullet on its own line.
 
-Do not include any sections other than the three sections above.
+Do not include any sections other than the two sections above.
 Enclose every section title in === exactly as shown above.
 Generate the sections in {}.
 """.format(findings_json, reportLang)

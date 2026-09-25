@@ -49,6 +49,7 @@ from .eeg import eegProcess
 from .models import predict
 # import google.generativeai as genai
 from google import genai
+from google.genai import errors, types
 import markdown
 from bs4 import BeautifulSoup
 import time
@@ -756,20 +757,34 @@ class CreateReport:
                 try:
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=message
+                        contents=message,
+                        config=types.GenerateContentConfig(
+                            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                                disable=True
+                            )
+                        )
                     )
                     text = response.text
                     html = markdown.markdown(text)
                     soup = BeautifulSoup(html, features='html.parser')
                     return soup.get_text()
+
+                except errors.APIError as e:
+                    print(e)
+                    if e.code == 429 and "GenerateRequestsPerDayPerProjectPerModel" in str(e):
+                        print("Gemini daily quota exhausted: using deterministic fallback.")
+                        return ""
+                    i += 1
+                    if i < 4:
+                        time.sleep(20)
                 
                 except Exception as e:
                     i += 1
                     print(e)
                     if i < 4:
                         time.sleep(20)
-
-            return ''
+            return ""
+        
         # elif 'claude' in model_name:
         #     client = anthropic.Anthropic(api_key=self.LLM_API_KEY)
         #     message = client.messages.create(

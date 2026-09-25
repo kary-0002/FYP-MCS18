@@ -206,15 +206,15 @@ def format_seizure_section(seizure_detection):
 
         duration = seizure.get("duration_seconds")
         if duration is not None:
-            parts.append(f"duration {float(duration):.2f} s")
+            parts.append(f"duration: {float(duration):.2f} s")
 
         mean_probability = seizure.get("mean_probability")
         if mean_probability is not None:
-            parts.append(f"mean model probability {float(mean_probability):.3f}")
+            parts.append(f"mean model probability: {float(mean_probability):.3f}")
 
         max_probability = seizure.get("max_probability")
         if max_probability is not None:
-            parts.append(f"maximum model probability {float(max_probability):.3f}")
+            parts.append(f"maximum model probability: {float(max_probability):.3f}")
         lines.append(f"- {'; '.join(parts)}.")
 
     lines.append(
@@ -338,7 +338,8 @@ def run_pipeline(
         eeg_path.name,
         str(eeg_path.parent),
         LLM_API_KEY=api_key,
-        llm_model="gemini-3.7-flash",
+        # llm_model="gemini-3.8-flash",
+        llm_model="gemini-3.5-flash-lite",
         model_folder=str(MODEL_DIR)
     )
 
