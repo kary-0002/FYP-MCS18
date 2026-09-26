@@ -153,6 +153,12 @@ function fmt(seconds, ms = false) {
       : "";
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}${tail}`;
 }
+function getPatientId(patientField) {
+  if (!patientField) return null;
+  const value = patientField.trim().split(/\s+/)[0];
+  if (!value || value === "X") return null;
+  return value;
+}
 function fingerprint() {
   return `neuroscope:${state.file.name}:${state.file.size}:${state.file.lastModified}`;
 }
@@ -219,8 +225,12 @@ async function openFile(file) {
     loadLocal();
     renderChannelList();
     renderAnnotations();
-    $("#fileMeta").textContent =
-      `${file.name} · ${usable.length} signals · ${fmt(state.edf.duration)} · ${(file.size / 1073741824).toFixed(2)} GB`;
+    const patientId = getPatientId(state.edf.patient);
+    const metadata = [
+      patientId ? `Patient ID: ${patientId}` : null,
+      `${usable.length}\u00A0channels · ${fmt(state.edf.duration)} · ${(file.size / 1073741824).toFixed(2)}\u00A0GB · ${file.name}`
+    ].filter(Boolean);
+    $("#fileMeta").textContent = metadata.join("\n");
     $("#duration").textContent = `/ ${fmt(state.edf.duration)}`;
     $("#timelineEnd").textContent = fmt(state.edf.duration);
     $("#exportButton").disabled = false;

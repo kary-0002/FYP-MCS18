@@ -16,7 +16,7 @@ body { background: var(--paper); }
 .signal-icon { margin: 0 auto 18px; }
 .workspace { height: 100vh; }
 .sidebar, .annotations-panel, .toolbar, .timeline { background: var(--white); }
-.recording-meta { margin: -4px 0 12px; color: var(--muted); font: 10px/1.5 'JetBrains Mono', monospace; overflow-wrap: anywhere; }
+.recording-meta { margin: -4px 0 12px; color: var(--muted); font: 10px/1.5 'JetBrains Mono', monospace; overflow-wrap: anywhere; white-space: pre-line; }
 .button, .icon-button, .search, .control select, .annotation, dialog, dialog select, dialog input, dialog textarea, .range-card, .count { border-radius: 0; }
 .button.primary { background: var(--green); border-color: var(--green); }
 .button.primary:hover { background: #2f784c; }
