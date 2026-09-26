@@ -143,7 +143,7 @@ def format_seconds(seconds):
 
 
 def format_background_section(background):
-    lines = ["\n=== EEG Findings ==="]
+    lines = ["=== EEG Findings ==="]
     quality = background.get("EEG_quality")
     if quality:
         lines.append(f"- Technical quality: {quality}.")
