@@ -1,4 +1,5 @@
 import os
+import pyedflib
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -132,6 +133,28 @@ def combine_findings(
     return combined
 
 
+def extract_recording_metadata(eeg_path):
+    reader = pyedflib.EdfReader(str(eeg_path))
+    try:
+        header = reader.getHeader()
+        sample_rates = [float(rate) for rate in reader.getSampleFrequencies()]
+        unique_sample_rates = sorted(set(sample_rates))
+
+        return {
+            "patient_id": header.get("patientcode") or None,
+            "recording_start": reader.getStartdatetime(),
+            "duration_seconds": float(reader.file_duration),
+            "sampling_rate_hz": (
+                unique_sample_rates[0]
+                if len(unique_sample_rates) == 1
+                else None
+            ),
+            "channel_count": int(reader.signals_in_file),
+        }
+    finally:
+        reader.close()
+
+
 def format_seconds(seconds):
     if seconds is None:
         return "N/A"
@@ -140,6 +163,34 @@ def format_seconds(seconds):
     minutes = int((seconds % 3600) // 60)
     secs = seconds % 60
     return f"{hours:02d}:{minutes:02d}:{secs:05.2f}"
+
+
+def format_recording_metadata(metadata):
+    lines = ["=== Recording Information ==="]
+    patient_id = metadata.get("patient_id")
+    if patient_id:
+        lines.append(f"- Anonymized Patient ID: {patient_id}.")
+
+    recording_start = metadata.get("recording_start")
+    if recording_start:
+        lines.append(f"- Recording start: {recording_start.strftime('%d %b %Y, %H:%M:%S')}.")
+
+    duration = metadata.get("duration_seconds")
+    if duration is not None:
+        total_seconds = int(round(duration))
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        lines.append(f"- Recording duration: {hours:02d}:{minutes:02d}:{seconds:02d}.")
+
+    sampling_rate = metadata.get("sampling_rate_hz")
+    if sampling_rate is not None:
+        lines.append(f"- Sampling rate: {sampling_rate:g} Hz.")
+
+    channel_count = metadata.get("channel_count")
+    if channel_count is not None:
+        lines.append(f"- Recorded channels: {channel_count}.")
+    return "\n".join(lines)
 
 
 def format_background_section(background):
@@ -301,7 +352,10 @@ def fallback_conclusion(combined):
 
 
 def build_report_text(combined, ai_report_text=None, seizure_detection_status="completed"):
-    sections = [format_background_section(combined["background_analysis"])]
+    sections = [
+        format_recording_metadata(combined["recording_metadata"]),
+        format_background_section(combined["background_analysis"]),
+    ]
 
     if seizure_detection_status == "failed":
         sections.append(
@@ -335,6 +389,7 @@ def run_pipeline(
     Seizure-detection results and reviewer annotations are optional.
     """
     eeg_path = Path(eeg_path)
+    recording_metadata = extract_recording_metadata(eeg_path)
 
     # Load Gemini API key
     load_dotenv()
@@ -361,6 +416,7 @@ def run_pipeline(
         seizure_results=seizure_results,
         annotation_results=annotation_results
     )
+    combined["recording_metadata"] = recording_metadata
 
     # Generate optional AI-assisted conclusion
     ai_report_text = ""
