@@ -757,14 +757,26 @@ $("#generateReport").onclick = async () => {
       throw new Error(errorText || "Report generation failed.");
     }
     const pdfBlob = await response.blob();
-    const url = URL.createObjectURL(pdfBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${state.file.name.replace(/\.edf$/i, "")}_report.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    const reportName = `${state.file.name.replace(/\.edf$/i, "")}_report.pdf`;
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: "seizureai:report-generated",
+          blob: pdfBlob,
+          name: reportName,
+        },
+        window.location.origin,
+      );
+    } else {
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = reportName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
     toast("Report generated");
   } catch (err) {
     console.error("Report generation error:", err);
