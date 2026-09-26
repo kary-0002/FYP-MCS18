@@ -300,12 +300,18 @@ def fallback_conclusion(combined):
     return f"=== Conclusion ===\n{' '.join(parts)}"
 
 
-def build_report_text(combined, ai_report_text=None):
+def build_report_text(combined, ai_report_text=None, seizure_detection_status="completed"):
     sections = [format_background_section(combined["background_analysis"])]
 
-    seizure_section = format_seizure_section(combined.get("seizure_detection"))
-    if seizure_section:
-        sections.append(seizure_section)
+    if seizure_detection_status == "failed":
+        sections.append(
+            "=== Automated Seizure Detection ===\n"
+            "- Automated seizure detection could not be completed for this recording."
+        )
+    else:
+        seizure_section = format_seizure_section(combined.get("seizure_detection"))
+        if seizure_section:
+            sections.append(seizure_section)
 
     annotation_section = format_annotation_section(combined.get("annotations"))
     if annotation_section:
@@ -320,6 +326,7 @@ def run_pipeline(
     eeg_path,
     seizure_results=None,
     annotation_results=None,
+    seizure_detection_status="completed",
     report_lang="English",
     output_root="pdf"
 ):
@@ -364,7 +371,11 @@ def run_pipeline(
             annotations=combined.get("annotations")
         )
 
-    report_text = build_report_text(combined, ai_report_text)
+    report_text = build_report_text(
+        combined, 
+        ai_report_text, 
+        seizure_detection_status
+    )
     output_folder = Path(output_root) / eeg_path.stem
     artifacts = report.generate_pdf(
         ai_report_text=report_text,

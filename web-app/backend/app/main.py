@@ -93,6 +93,7 @@ async def post_generate_report(
     veeg: UploadFile = File(...),
     seizure_results_json: str = Form(...),
     annotation_results_json: str = Form(...),
+    seizure_detection_status: str = Form(...),
 ):
     original_filename = Path(veeg.filename or "").name
 
@@ -122,6 +123,7 @@ async def post_generate_report(
             eeg_path=temp_path,
             seizure_results=seizure_results,
             annotation_results=annotation_results,
+            seizure_detection_status=seizure_detection_status,
             output_root=work_dir
         )
         pdf_path = result["pdf_path"]

@@ -10,6 +10,7 @@ const state = {
   selection: null,
   annotations: [],
   seizureDetection: null,
+  seizureDetectionStatus: null,
   editing: null,
   playing: null,
   readToken: 0,
@@ -174,6 +175,8 @@ async function openFile(file) {
     $("#loading").classList.remove("hidden");
     state.file = file;
     state.seizureDetection = null;
+    state.seizureDetectionStatus = "running";
+    $("#generateReport").disabled = true;
     state.edf = await parseEDF(file);
 
     // Run seizure detection separately so it does not block the EDF viewer
@@ -189,14 +192,20 @@ async function openFile(file) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Seizure detection failed:", errorText);
+        state.seizureDetectionStatus = "failed";
+        $("#generateReport").disabled = false;
       } else {
         const detectionResult = await response.json();
         state.seizureDetection = detectionResult;
+        state.seizureDetectionStatus = "completed";
         console.log("Seizure detection result:", detectionResult);
         renderDetectedSeizures();
+        $("#generateReport").disabled = false;
       }
     } catch (err) {
       console.error("Seizure detection error:", err);
+      state.seizureDetectionStatus = "failed";
+      $("#generateReport").disabled = false;
     }
 
     state.start = 0;
@@ -727,6 +736,7 @@ $("#generateReport").onclick = async () => {
   formData.append("veeg", state.file);
   formData.append("seizure_results_json", JSON.stringify(state.seizureDetection));
   formData.append("annotation_results_json", JSON.stringify(annotationResults));
+  formData.append("seizure_detection_status", state.seizureDetectionStatus);
   try {
     const response = await fetch(`${API_BASE_URL}/report`, {
       method: "POST",
