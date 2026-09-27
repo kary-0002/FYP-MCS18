@@ -376,41 +376,35 @@ def build_report_text(combined, ai_report_text=None, seizure_detection_status="c
     return "\n\n".join(sections)
 
 
-def run_pipeline(
+def prepare_analysis(eeg_path):
+    eeg_path = Path(eeg_path)
+    recording_metadata = extract_recording_metadata(eeg_path)
+    report = CreateReport(
+        eeg_path.name,
+        str(eeg_path.parent),
+        model_folder=str(MODEL_DIR),
+    )
+    return {
+        "report": report,
+        "recording_metadata": recording_metadata
+    }
+
+
+def generate_report_from_analysis(
+    report,
     eeg_path,
+    recording_metadata,
     seizure_results=None,
     annotation_results=None,
     seizure_detection_status="completed",
     report_lang="English",
     output_root="pdf"
 ):
-    """
-    Run the complete MCS18 EEG analysis pipeline.
-    Seizure-detection results and reviewer annotations are optional.
-    """
     eeg_path = Path(eeg_path)
-    recording_metadata = extract_recording_metadata(eeg_path)
-
-    # Load Gemini API key
-    load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY", "")
-
-    # Run Tung EEG analysis
-    report = CreateReport(
-        eeg_path.name,
-        str(eeg_path.parent),
-        LLM_API_KEY=api_key,
-        # llm_model="gemini-3.8-flash",
-        llm_model="gemini-3.5-flash-lite",
-        model_folder=str(MODEL_DIR)
-    )
-
     background_results = {
         "recording_id": eeg_path.stem,
         "background_analysis": report.finalResults
     }
-
-    # Combine available workstreams
     combined = combine_findings(
         background_results,
         seizure_results=seizure_results,
@@ -418,7 +412,12 @@ def run_pipeline(
     )
     combined["recording_metadata"] = recording_metadata
 
-    # Generate optional AI-assisted conclusion
+    load_dotenv()
+    api_key = os.getenv("GOOGLE_API_KEY", "")
+    report.LLM_API_KEY = api_key
+    report.llm_model = "gemini-3.5-flash-lite"
+    # report.llm_model = "gemini-3.8-flash"
+
     ai_report_text = ""
     if api_key:
         ai_report_text = report.AI_Text_generate(
@@ -428,8 +427,8 @@ def run_pipeline(
         )
 
     report_text = build_report_text(
-        combined, 
-        ai_report_text, 
+        combined,
+        ai_report_text,
         seizure_detection_status
     )
     output_folder = Path(output_root) / eeg_path.stem
@@ -445,3 +444,25 @@ def run_pipeline(
         "pdf_path": artifacts["pdf_path"],
         "graphs": artifacts["graphs"]
     }
+
+
+def run_pipeline(
+    eeg_path,
+    seizure_results=None,
+    annotation_results=None,
+    seizure_detection_status="completed",
+    report_lang="English",
+    output_root="pdf"
+):
+    eeg_path = Path(eeg_path)
+    analysis = prepare_analysis(eeg_path)
+    return generate_report_from_analysis(
+        report=analysis["report"],
+        eeg_path=eeg_path,
+        recording_metadata=analysis["recording_metadata"],
+        seizure_results=seizure_results,
+        annotation_results=annotation_results,
+        seizure_detection_status=seizure_detection_status,
+        report_lang=report_lang,
+        output_root=output_root
+    )
