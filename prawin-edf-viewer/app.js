@@ -541,6 +541,9 @@ function renderDetectedSeizures() {
   `;
 
   const list = $("#detectedSeizureList");
+  list.style.maxHeight = "150px";
+  list.style.overflowY = "auto";
+  list.style.paddingRight = "4px";
 
   seizures.forEach((seizure, index) => {
     const item = document.createElement("button");
