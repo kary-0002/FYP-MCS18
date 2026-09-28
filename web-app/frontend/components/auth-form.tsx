@@ -36,6 +36,15 @@ interface AuthFormProps {
   mode: "login" | "signup";
 }
 
+function getAuthCallbackUrl(nextPath: string) {
+  // Set this in the hosting provider so auth does not fall back to a Supabase
+  // Site URL left over from local development.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  const origin = siteUrl || window.location.origin;
+
+  return `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+}
+
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -79,7 +88,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+            emailRedirectTo: getAuthCallbackUrl(nextPath),
           },
         });
 
@@ -124,7 +133,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+        redirectTo: getAuthCallbackUrl(nextPath),
       },
     });
 

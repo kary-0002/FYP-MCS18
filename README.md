@@ -52,8 +52,9 @@ supabase/
 1. Create a Supabase project.
 2. **Authentication → Providers**
   - Enable **Email** (email + password).
-  - Enable **Google**. In Google Cloud, create an OAuth client and set the redirect URI to `https://<project-ref>.supabase.co/auth/v1/callback`. Add `http://localhost:3000/auth/callback` (and the production URL) under Supabase **Redirect URLs**.
-3. Copy the project URL and anon key into `web-app/frontend/.env.local` (see `.env.example`).
+  - Enable **Google**. In Google Cloud, create an OAuth client and set the redirect URI to `https://<project-ref>.supabase.co/auth/v1/callback`.
+  - In **Authentication → URL Configuration**, set **Site URL** to the deployed frontend URL, for example `https://your-app.vercel.app`, and add both `https://your-app.vercel.app/auth/callback` and `http://localhost:3000/auth/callback` to **Redirect URLs**.
+3. Copy the project URL and anon key into `web-app/frontend/.env.local` (see `.env.example`). Set `NEXT_PUBLIC_SITE_URL` to the same deployed frontend URL in the production environment (for example, Vercel). Do not set it locally; local auth will use `http://localhost:3000`.
 4. Run `supabase/schema.sql` in the SQL editor. That creates:
   - a private `user-files` bucket (`.edf` + `.pdf`, 500 MB limit)
   - a `user_files` table with row-level security
