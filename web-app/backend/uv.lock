@@ -90,6 +90,7 @@ dependencies = [
     { name = "markdown" },
     { name = "matplotlib" },
     { name = "mne" },
+    { name = "nicolet-e2edf" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pandas" },
@@ -121,6 +122,7 @@ requires-dist = [
     { name = "markdown" },
     { name = "matplotlib" },
     { name = "mne" },
+    { name = "nicolet-e2edf", specifier = ">=0.4.2" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pillow" },
@@ -1547,6 +1549,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509", size = 2517025, upload-time = "2025-12-08T17:02:39.908Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9e/c9/b2622292ea83fbb4ec318f5b9ab867d0a28ab43c5717bb85b0a5f6b3b0a4/networkx-3.6.1-py3-none-any.whl", hash = "sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762", size = 2068504, upload-time = "2025-12-08T17:02:38.159Z" },
+]
+
+[[package]]
+name = "nicolet-e2edf"
+version = "0.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/21/ba/01ee7dc7306ea1547b010923a7c0b03ed3226e84bf7dc97acbff10c5cca4/nicolet_e2edf-0.4.2.tar.gz", hash = "sha256:57e4a10c79afb407efae0e2e6818416365569d3ae45e4bb55291082c64d6feed", size = 127346, upload-time = "2026-08-29T17:14:23.502Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/6c/b9cfa156138bb32738d92878041db2204c7103bb5b574cb990d45ddb138f/nicolet_e2edf-0.4.2-py3-none-any.whl", hash = "sha256:a80b9a2fdee69bf3aea180d726bb385db5844075307efd4e20005be917b8198b", size = 123871, upload-time = "2026-08-29T17:14:21.688Z" },
 ]
 
 [[package]]

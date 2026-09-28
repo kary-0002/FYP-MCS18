@@ -1,6 +1,7 @@
 import os
 import pyedflib
 from pathlib import Path
+from datetime import datetime
 
 from dotenv import load_dotenv
 from .auto_report import CreateReport
@@ -165,11 +166,89 @@ def format_seconds(seconds):
     return f"{hours:02d}:{minutes:02d}:{secs:05.2f}"
 
 
+def format_nicolet_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).strftime("%d %b %Y")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def format_nicolet_datetime(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).strftime("%d %b %Y, %H:%M:%S")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def format_patient_information(metadata):
+    nicolet = metadata.get("nicolet")
+    if not nicolet:
+        return None
+    patient = nicolet.get("patient", {})
+    lines = ["=== Patient Information ==="]
+    name_parts = [
+        patient.get("firstName"),
+        patient.get("middleName"),
+        patient.get("lastName"),
+    ]
+    name = " ".join(
+        part.strip()
+        for part in name_parts
+        if isinstance(part, str) and part.strip()
+    )
+
+    if name:
+        lines.append(f"- Patient name: {name}.")
+    patient_id = patient.get("altID")
+    if patient_id:
+        lines.append(f"- Patient ID: {patient_id}.")
+    edf_patient_id = metadata.get("patient_id")
+    if edf_patient_id:
+        lines.append(f"- EDF Patient ID: {edf_patient_id}.")
+    dob = format_nicolet_date(patient.get("DOB"))
+    if dob:
+        lines.append(f"- Date of birth: {dob}.")
+    dominance = patient.get("dominance")
+    if dominance:
+        lines.append(f"- Hand dominance: {dominance}.")
+    notes = patient.get("notes")
+    if notes:
+        lines.append(f"- Patient notes: {notes}.")
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
+def format_test_information(metadata):
+    nicolet = metadata.get("nicolet")
+    if not nicolet:
+        return None
+    study = nicolet.get("study", {}).get("mapped", {})
+    test = nicolet.get("test", {}).get("mapped", {})
+    lines = ["=== Test Information ==="]
+    fields = [
+        ("Test ID", study.get("test_id")),
+        ("Type", study.get("type")),
+        ("Requested by", study.get("requested_by")),
+        ("Technologist", test.get("technologist")),
+        ("Patient state", study.get("patient_state")),
+        ("Creation date", format_nicolet_datetime(study.get("creation_date"))),
+        ("Recording site", test.get("recording_site")),
+    ]
+    for label, value in fields:
+        if value not in (None, ""):
+            lines.append(f"- {label}: {value}.")
+    return "\n".join(lines) if len(lines) > 1 else None
+
+
 def format_recording_metadata(metadata):
     lines = ["=== Recording Information ==="]
-    patient_id = metadata.get("patient_id")
-    if patient_id:
-        lines.append(f"- Anonymized Patient ID: {patient_id}.")
+    if not metadata.get("nicolet"):
+        patient_id = metadata.get("patient_id")
+        if patient_id:
+            lines.append(f"- Patient ID: {patient_id}.")
 
     recording_start = metadata.get("recording_start")
     if recording_start:
@@ -352,10 +431,14 @@ def fallback_conclusion(combined):
 
 
 def build_report_text(combined, ai_report_text=None, seizure_detection_status="completed"):
+    recording_metadata = combined["recording_metadata"]
     sections = [
-        format_recording_metadata(combined["recording_metadata"]),
-        format_background_section(combined["background_analysis"]),
+        format_patient_information(recording_metadata),
+        format_test_information(recording_metadata),
+        format_recording_metadata(recording_metadata),
+        format_background_section(combined["background_analysis"])
     ]
+    sections = [section for section in sections if section]
 
     if seizure_detection_status == "failed":
         sections.append(
@@ -376,9 +459,11 @@ def build_report_text(combined, ai_report_text=None, seizure_detection_status="c
     return "\n\n".join(sections)
 
 
-def prepare_analysis(eeg_path):
+def prepare_analysis(eeg_path, nicolet_metadata=None):
     eeg_path = Path(eeg_path)
     recording_metadata = extract_recording_metadata(eeg_path)
+    if nicolet_metadata is not None:
+        recording_metadata["nicolet"] = nicolet_metadata
     report = CreateReport(
         eeg_path.name,
         str(eeg_path.parent),
@@ -452,10 +537,14 @@ def run_pipeline(
     annotation_results=None,
     seizure_detection_status="completed",
     report_lang="English",
-    output_root="pdf"
+    output_root="pdf",
+    nicolet_metadata=None
 ):
     eeg_path = Path(eeg_path)
-    analysis = prepare_analysis(eeg_path)
+    analysis = prepare_analysis(
+        eeg_path,
+        nicolet_metadata=nicolet_metadata
+    )
     return generate_report_from_analysis(
         report=analysis["report"],
         eeg_path=eeg_path,
