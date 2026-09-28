@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SeizureAI — EDF Viewer</title>
+  <title>SeizureAI — EEG Viewer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -11,19 +11,19 @@
   <link rel="stylesheet" href="theme.css" />
 </head>
 <body>
-  <input id="edfInput" type="file" accept=".edf,application/octet-stream" hidden />
+  <input id="edfInput" type="file" accept=".edf,.e,application/octet-stream" hidden />
   <input id="annotationInput" type="file" accept=".json,application/json" hidden />
 
   <main>
     <section id="emptyState" class="empty-state">
       <div class="upload-panel">
         <div class="signal-icon"><i></i><i></i><i></i><i></i><i></i></div>
-        <span class="eyebrow">EDF signal review</span>
+        <span class="eyebrow">EEG signal review</span>
         <h1>Open an EEG recording</h1>
-        <p>Choose a local EDF/EDF+ file to view its channels and create annotations. The recording stays on this device.</p>
-        <label class="button primary large" for="edfInput">Choose an EDF file</label>
+        <p>Choose an EDF or Nicolet .e recording to view its channels and create annotations.</p>
+        <label class="button primary large" for="edfInput">Choose an EEG file</label>
       </div>
-      <div class="compatibility"><span>✓ EDF / EDF+</span><span>✓ Siena Scalp EEG</span><span>✓ Local processing</span></div>
+      <div class="compatibility"><span>✓ EDF</span><span>✓ Nicolet .e</span><span>✓ Siena Scalp EEG</span></div>
     </section>
 
     <section id="workspace" class="workspace hidden">
@@ -68,7 +68,7 @@
           <button class="button ghost" id="importButton">Import JSON</button>
           <button class="button ghost" id="exportButton">Export JSON</button>
           <button class="button ghost" id="generateReport">Generate Report</button>
-          <label class="button ghost" for="edfInput">Open another EDF</label>
+          <label class="button ghost" for="edfInput">Open another recording</label>
           <a class="button ghost home-link" href="/" target="_top">← Back to SeizureAI home</a>
         </div>
         <div id="annotationList" class="annotation-list"><div class="aside-empty">Select a region of the waveform to add a clinical annotation.</div></div>

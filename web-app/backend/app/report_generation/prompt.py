@@ -85,7 +85,7 @@ def reportPrompt(finalResults, reportLang='English', promptLength='long'):
 
     return message
 
-def mcs18ReportPrompt(
+def mcs18ReportPrompt_old(
         finalResults,
         seizure_detection=None,
         annotations=None,
@@ -148,7 +148,7 @@ For each annotation:
   - "start_seconds": start time in seconds from the beginning of the recording.
   - "end_seconds": end time in seconds from the beginning of the recording.
   - "channels": EEG channels selected by the reviewer.
-  - "label": reviewer-entered annotation label.
+  - "label": annotation category selected by the reviewer from the available labels.
   - "notes": reviewer-entered notes.
 A reviewer label such as "Seizure" represents what the reviewer entered and must not automatically be treated as an independently confirmed seizure.
 
@@ -233,6 +233,102 @@ Enclose every section title in === exactly as shown above.
 Generate the report in {}.
 """.format(findings_json, reportLang)
     return message
+
+
+def mcs18ReportPrompt(
+        finalResults,
+        seizure_detection=None,
+        annotations=None,
+        reportLang='English'
+    ):
+
+    combined_findings = {"background_analysis": finalResults}
+
+    if seizure_detection is not None:
+        combined_findings["seizure_detection"] = seizure_detection
+
+    if annotations is not None and annotations.get("annotations"):
+        combined_findings["annotations"] = annotations
+
+    findings_json = json.dumps(
+        combined_findings,
+        ensure_ascii=False,
+        indent=2
+    )
+
+    message = """
+You are generating AI-assisted interpretive sections for an EEG analysis report.
+
+Structured findings:
+{}
+
+
+Relevant field meanings:
+
+"background_analysis":
+- "EEG_quality": overall technical quality after automated preprocessing.
+- "bad_channels": channels flagged by the automated artifact-detection process.
+- "backgroundFrequency": estimated dominant background frequency for the right and left hemispheres.
+- "bg_active": automated classification of background activity, such as normal background frequency or diffuse background slowing.
+- "bg_amp": estimated background alpha amplitude category.
+- "bg_amp_sym": automated assessment of left-right alpha amplitude symmetry.
+- "bg_freq": automated assessment of left-right background-frequency symmetry.
+- "abnormalFindings": abnormalities explicitly identified by the automated background-analysis pipeline.
+
+"seizure_detection":
+- "seizure_count": number of candidate seizure intervals returned by the automated detector.
+- "seizures": automated candidate intervals; these are not clinician-confirmed seizures.
+
+"annotations":
+- "annotations": reviewer-created annotations.
+- "label": category selected by the reviewer from the available labels.
+- "notes": reviewer-entered notes.
+
+
+Important rules:
+1. Use only the supplied structured findings.
+2. Do not invent diagnoses, symptoms, patient history, medication, imaging, laboratory findings, or clinical circumstances.
+3. Automated seizure detections are candidate intervals requiring clinical review. Do not describe them as confirmed seizures.
+4. Model probability values are model outputs and do not represent diagnostic certainty.
+5. Reviewer annotation labels are reviewer-selected categories, while notes are reviewer-entered text. Do not independently validate or reinterpret either.
+6. If seizure_detection is supplied with seizure_count = 0, state only that the automated detector returned no candidate seizure intervals. Do not state that the EEG contains no seizures.
+7. Do not claim that epileptiform discharges, spikes, sharp waves, or other EEG features are present or absent unless explicitly supplied.
+8. Clearly distinguish automated background-analysis findings, automated seizure-detection results, and reviewer annotations where relevant.
+9. Do not repeat detailed timestamps, probability values, or individual annotation details because these are presented elsewhere in the report.
+10. Do not prescribe treatment or imply that any investigation is mandatory.
+
+
+Task:
+
+=== Conclusion ===
+Write a concise professional summary of the clinically relevant automated findings.
+- Do not repeat exact frequencies, amplitudes, probability values, timestamps, or channel names unless they are necessary to understand the conclusion.
+- If the "annotations" component is not supplied, do not mention reviewer annotations.
+- Focus on the main background abnormality, the presence or absence of candidate seizure detections, and any clinically relevant reviewer information.
+- If a relevant abnormal automated finding is present, include at most one brief sentence describing its general clinical significance.
+- Present clinical significance only as a general association, not as a diagnosis or conclusion about this patient.
+- When describing general clinical significance, keep it broad and cautious. Do not introduce specific causes or diagnoses that are not supplied in the structured findings.
+  For diffuse background slowing, wording such as "a nonspecific finding that may be associated with diffuse cerebral dysfunction" is appropriate.
+- Do not infer frequency-band labels or other derived interpretations from numerical values unless they are explicitly supplied in the structured findings.
+- State that the findings should be interpreted together with the EEG recording and relevant clinical information.
+- Keep this section to approximately 80 to 120 words.
+
+=== Suggested Next Steps ===
+Provide at most 2 concise bullet points describing conditional considerations for clinical review.
+- Each bullet should contain only one sentence.
+- Do not repeat detailed findings already stated elsewhere.
+- Suggestions may include direct EEG review, review of candidate intervals, correlation with available video or clinical information, or assessment of artifact-affected channels where relevant.
+- Do not prescribe treatment.
+- Do not imply that any investigation is mandatory.
+- Keep this section to approximately 40 to 60 words.
+- Use "-" for every bullet and place each bullet on its own line.
+
+Do not include any sections other than the two sections above.
+Enclose every section title in === exactly as shown above.
+Generate the sections in {}.
+""".format(findings_json, reportLang)
+    return message
+
 
 def validatePrompt(text):
     prompt="""

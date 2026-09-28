@@ -10,6 +10,10 @@ const state = {
   selection: null,
   annotations: [],
   seizureDetection: null,
+  seizureDetectionStatus: null,
+  analysisSessionId: null,
+  displayMetadata: null,
+  sourceFormat: null,
   editing: null,
   playing: null,
   readToken: 0,
@@ -25,6 +29,34 @@ const colors = {
 };
 
 const API_BASE_URL = "https://fyp-api.azutoro.com";
+
+
+async function createAnalysisSession(file) {
+  const formData = new FormData();
+  formData.append("veeg", file);
+  const response = await fetch(`${API_BASE_URL}/upload`, { method: "POST", body: formData });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Could not upload EEG recording.");
+  }
+  return response.json();
+}
+
+async function fetchSessionEDF(sessionId, filename) {
+  const response = await fetch(`${API_BASE_URL}/edf/${sessionId}`);
+  if (!response.ok) {
+    throw new Error("The converted EDF recording could not be downloaded.");
+  }
+  const blob = await response.blob();
+  return new File(
+    [blob],
+    filename || "recording.edf",
+    {
+      type: "application/octet-stream",
+      lastModified: Date.now()
+    }
+  );
+}
 
 function text(bytes) {
   return new TextDecoder("ascii").decode(bytes);
@@ -152,6 +184,12 @@ function fmt(seconds, ms = false) {
       : "";
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}${tail}`;
 }
+function getPatientId(patientField) {
+  if (!patientField) return null;
+  const value = patientField.trim().split(/\s+/)[0];
+  if (!value || value === "X") return null;
+  return value;
+}
 function fingerprint() {
   return `neuroscope:${state.file.name}:${state.file.size}:${state.file.lastModified}`;
 }
@@ -172,33 +210,28 @@ async function openFile(file) {
     $("#emptyState").classList.add("hidden");
     $("#workspace").classList.remove("hidden");
     $("#loading").classList.remove("hidden");
-    state.file = file;
+    const uploadedFile = file;
+    const isNicolet = /\.e$/i.test(file.name);
     state.seizureDetection = null;
-    state.edf = await parseEDF(file);
-
-    // Run seizure detection separately so it does not block the EDF viewer
-    try {
-      const formData = new FormData();
-      formData.append("veeg", file);
-
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Seizure detection failed:", errorText);
-      } else {
-        const detectionResult = await response.json();
-        state.seizureDetection = detectionResult;
-        console.log("Seizure detection result:", detectionResult);
-        renderDetectedSeizures();
-      }
-    } catch (err) {
-      console.error("Seizure detection error:", err);
+    state.seizureDetectionStatus = null;
+    state.analysisSessionId = null;
+    state.displayMetadata = null;
+    state.sourceFormat = null;
+    let uploadResult = null;
+    // Nicolet .e files must be converted before the viewer can parse them.
+    if (isNicolet) {
+      uploadResult = await createAnalysisSession(uploadedFile);
+      state.analysisSessionId = uploadResult.session_id;
+      state.displayMetadata = uploadResult.display_metadata;
+      state.sourceFormat = uploadResult.source_format;
+      file = await fetchSessionEDF(state.analysisSessionId, uploadResult.edf_filename);
     }
-
+    state.file = file;
+    state.edf = await parseEDF(file);
+    const reportButton = $("#generateReport");
+    reportButton.disabled = true;
+    reportButton.textContent = "Analysing EEG...";
+    state.edf = await parseEDF(file);
     state.start = 0;
     state.selection = null;
     const usable = state.edf.signals.filter(
@@ -210,12 +243,93 @@ async function openFile(file) {
     loadLocal();
     renderChannelList();
     renderAnnotations();
-    $("#fileMeta").textContent =
-      `${file.name} · ${usable.length} signals · ${fmt(state.edf.duration)} · ${(file.size / 1073741824).toFixed(2)} GB`;
+    const edfPatientId = getPatientId(state.edf.patient);
+    const patientId = state.displayMetadata?.patient_id || edfPatientId;
+    const testId = state.displayMetadata?.test_id;
+    const identifiers = [
+      patientId ? `Patient ID: ${patientId}` : null,
+      testId ? `Test ID: ${testId}` : null
+    ].filter(Boolean);
+    const details = [
+      `${usable.length}\u00A0channels`,
+      fmt(state.edf.duration),
+      `${(file.size / 1073741824).toFixed(2)}\u00A0GB`
+    ];
+    if (!identifiers.length) { details.unshift(file.name); }
+    $("#fileMeta").textContent = [...identifiers, details.join(" · ")].join("\n");
     $("#duration").textContent = `/ ${fmt(state.edf.duration)}`;
     $("#timelineEnd").textContent = fmt(state.edf.duration);
     $("#exportButton").disabled = false;
     await render();
+    // Run seizure detection separately so it does not block the EDF viewer
+    // Create an analysis session if not already created for this recording
+    try {
+      if (!state.analysisSessionId) {
+        uploadResult = await createAnalysisSession(uploadedFile);
+
+        state.analysisSessionId = uploadResult.session_id;
+        state.displayMetadata = uploadResult.display_metadata;
+        state.sourceFormat = uploadResult.source_format;
+      }
+      state.seizureDetectionStatus = "running";
+      renderDetectedSeizures();
+
+      // Run seizure detection first so its results can be shown immediately
+      try {
+        const detectionResponse = await fetch(
+          `${API_BASE_URL}/seizure-detection/${state.analysisSessionId}`,
+          { method: "POST" }
+        );
+
+        if (!detectionResponse.ok) {
+          throw new Error(await detectionResponse.text());
+        }
+        const detectionResult = await detectionResponse.json();
+        
+        if (detectionResult.status === "completed") {
+          state.seizureDetection = detectionResult.seizure_detection;
+          state.seizureDetectionStatus = "completed";
+          console.log("Seizure detection result:", state.seizureDetection);
+          renderDetectedSeizures();
+          draw();
+        } else {
+          state.seizureDetection = null;
+          state.seizureDetectionStatus = "failed";
+          renderDetectedSeizures();
+        }
+      } catch (err) {
+        console.error("Seizure detection error:", err);
+        state.seizureDetection = null;
+        state.seizureDetectionStatus = "failed";
+        renderDetectedSeizures();
+      }
+
+      // Run Tung background analysis automatically after seizure detection
+      try {
+        const backgroundResponse = await fetch(
+          `${API_BASE_URL}/background-analysis/${state.analysisSessionId}`,
+          { method: "POST" }
+        );
+
+        if (!backgroundResponse.ok) {
+          throw new Error(await backgroundResponse.text());
+        }
+        const backgroundResult = await backgroundResponse.json();
+
+        if (backgroundResult.status === "completed") {
+          const reportButton = $("#generateReport");
+          reportButton.disabled = false;
+          reportButton.textContent = "Generate Report";
+        } else {
+          console.error("Background analysis failed:", backgroundResult.detail);
+        }
+      } catch (err) {
+        console.error("Background analysis error:", err);
+      }
+
+    } catch (err) {
+      console.error("EEG upload error:", err);
+    }
   } catch (err) {
     $("#emptyState").classList.remove("hidden");
     $("#workspace").classList.add("hidden");
@@ -459,23 +573,63 @@ function renderDetectedSeizures() {
     annotationList.parentElement.insertBefore(section, annotationList);
   }
 
+  if (state.seizureDetectionStatus === "running") {
+    section.innerHTML = `
+      <div style="margin-top: 18px; margin-bottom: 12px;">
+        <div style="font-weight: 600; margin-bottom: 4px;">
+          Seizure Detection
+        </div>
+        <div style="font-size: 12px; color: #6d7c78;">
+          Analysing recording...
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  if (state.seizureDetectionStatus === "failed") {
+    section.innerHTML = `
+      <div style="margin-top: 18px; margin-bottom: 12px;">
+        <div style="font-weight: 600; margin-bottom: 4px;">
+          Seizure Detection
+        </div>
+        <div style="font-size: 12px; color: #6d7c78;">
+          Seizure detection unavailable.
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   const seizures = state.seizureDetection?.seizures || [];
 
   if (!seizures.length) {
-    section.innerHTML = "";
+    section.innerHTML = `
+      <div style="margin-top: 18px; margin-bottom: 12px;">
+        <div style="font-weight: 600; margin-bottom: 4px;">
+          Seizure Detection
+        </div>
+        <div style="font-size: 12px; color: #6d7c78;">
+          No candidate seizures detected.
+        </div>
+      </div>
+    `;
     return;
   }
 
   section.innerHTML = `
     <div style="margin-top: 18px; margin-bottom: 12px;">
-      <div style="font-weight: 600; margin-bottom: 6px;">
-        Detected Seizures
+      <div style="font-weight: 600; margin-bottom: 4px;">
+        Seizure Detection
       </div>
       <div id="detectedSeizureList"></div>
     </div>
   `;
 
   const list = $("#detectedSeizureList");
+  list.style.maxHeight = "150px";
+  list.style.overflowY = "auto";
+  list.style.paddingRight = "4px";
 
   seizures.forEach((seizure, index) => {
     const item = document.createElement("button");
@@ -704,7 +858,7 @@ $("#exportButton").onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 $("#generateReport").onclick = async () => {
-  if (!state.file) return;
+  if (!state.file || !state.analysisSessionId) return;
   const button = $("#generateReport");
   const originalText = button.textContent;
   button.disabled = true;
@@ -724,9 +878,10 @@ $("#generateReport").onclick = async () => {
     annotations: state.annotations,
   };
   const formData = new FormData();
-  formData.append("veeg", state.file);
+  formData.append("session_id", state.analysisSessionId);
   formData.append("seizure_results_json", JSON.stringify(state.seizureDetection));
   formData.append("annotation_results_json", JSON.stringify(annotationResults));
+  formData.append("seizure_detection_status", state.seizureDetectionStatus);
   try {
     const response = await fetch(`${API_BASE_URL}/report`, {
       method: "POST",
@@ -737,14 +892,26 @@ $("#generateReport").onclick = async () => {
       throw new Error(errorText || "Report generation failed.");
     }
     const pdfBlob = await response.blob();
-    const url = URL.createObjectURL(pdfBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${state.file.name.replace(/\.edf$/i, "")}_report.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    const reportName = `${state.file.name.replace(/\.edf$/i, "")}_report.pdf`;
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: "seizureai:report-generated",
+          blob: pdfBlob,
+          name: reportName,
+        },
+        window.location.origin,
+      );
+    } else {
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = reportName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
     toast("Report generated");
   } catch (err) {
     console.error("Report generation error:", err);

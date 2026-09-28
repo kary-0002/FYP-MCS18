@@ -75,6 +75,63 @@ class writePDF:
         pdf.image(image_path, x=x, y=y, w=width, h=height)
 
 
+    def renderReportText(self, pdf, fontName, body_size):
+        line_height = body_size * 0.45
+        for raw_line in self.ai_report_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                pdf.ln(line_height * 0.4)
+                continue
+
+            # Section heading: === EEG Findings ===
+            if line.startswith("===") and line.endswith("==="):
+                heading = line.strip("=").strip()
+                pdf.ln(1)
+                pdf.set_font(fontName, style="B", size=body_size + 1)
+                pdf.multi_cell(0, line_height + 1, heading)
+                pdf.set_font(fontName, size=body_size)
+                continue
+
+            # Nested bullet
+            if raw_line.startswith("  - ") or raw_line.startswith("  * "):
+                text = raw_line.strip()[2:].strip()
+                y = pdf.get_y()
+                pdf.set_x(18)
+                pdf.cell(4, line_height, text="\u2022")
+                pdf.set_xy(22, y)
+                pdf.multi_cell(
+                    176,
+                    line_height,
+                    text,
+                    align="L"
+                )
+                continue
+
+            # Normal bullet from either deterministic or Gemini output
+            if line.startswith("- ") or line.startswith("* "):
+                text = line[2:].strip()
+                y = pdf.get_y()
+                pdf.set_x(12)
+                pdf.cell(4, line_height, text="\u2022")
+                pdf.set_xy(16, y)
+                pdf.multi_cell(
+                    182,
+                    line_height,
+                    text,
+                    align="L"
+                )
+                continue
+
+            # Normal prose
+            pdf.set_x(12)
+            pdf.multi_cell(
+                186,
+                line_height,
+                line,
+                align="J"
+            )
+            
+
     def savePDF(self, results):     
         print ('savePDF')
         removeEpochsRatio=results['removeEpochsRatio']
@@ -108,60 +165,83 @@ class writePDF:
         # pdf.add_font(fontName, '', rootPath+'\\arialuni.ttf', uni=True)
         fontName = 'DejaVuSans'
         fontPath = font_manager.findfont('DejaVu Sans')
+        boldFontPath = font_manager.findfont(
+            font_manager.FontProperties(
+                family="DejaVu Sans",
+                weight="bold"
+            )
+        )
         pdf.add_font(fontName, fname=fontPath)
+        pdf.add_font(fontName, style="B", fname=boldFontPath)
     
         
-        pdf.set_font(fontName, size=18)
+        pdf.set_font(fontName, style="B", size=18)
         pdf.add_page(orientation = 'P')
         # set page horizontal    
         # eeg5.jpg
-        pdf.cell(196, line_height, text='Power Spectrum Topomap', ln=1, align='C')
+        # pdf.cell(196, line_height, text='Power Spectrum Topomap', ln=1, align='C')
+        pdf.cell(0, line_height, text='EEG Spectral Analysis', ln=1, align='C')
         # pdf.set_font(fontName, size=12)
         # pdf.cell(196, line_height-3, text=self.fileName, ln=1, align='C' )
 
-        image_width = 196
-        image_x = (pdf.w - image_width) / 2
+        # image_width = 196
+        # image_x = (pdf.w - image_width) / 2
 
         jpgFile = self.dest_folder+'eeg0.jpg'
-        pdf.image(jpgFile, x=image_x, w=image_width)
+        # pdf.image(jpgFile, x=image_x, w=image_width)
+        self.addImageFit(pdf, jpgFile, 10, 24, 190, 140)
         # pdf.image(jpgFile, x=0, w=196)
         
         # 左右channel差異
         jpgFile=self.dest_folder+'eeg1.jpg'
-        pdf.image(jpgFile, x=image_x, w=image_width)
+        # pdf.image(jpgFile, x=image_x, w=image_width)
+        self.addImageFit(pdf, jpgFile, 10, 166, 190, 48)
         # pdf.image(jpgFile, x=0, w=196)       
         
         # O1, O2 主頻率
         jpgFile=self.dest_folder+'eeg2.jpg'
-        pdf.image(jpgFile, x=image_x, w=image_width)
+        # pdf.image(jpgFile, x=image_x, w=image_width)
+        self.addImageFit(pdf, jpgFile, 10, 222, 190, 48)
         # pdf.image(jpgFile, x=0, w=196)
 
         
         if self.ai_report_text:
             # write ai report to a page, ai_report_text is a multi-line string            
             pdf.add_page()
-            pdf.set_font(fontName, size=18)
+            pdf.set_font(fontName, style='B', size=18)
             # pdf.cell(196, line_height, text='EEG AI Analysis', ln=1, align='C')
-            pdf.cell(196, line_height, text='AI-Assisted EEG Analysis', ln=1, align='C')
+            # pdf.cell(196, line_height, text='AI-Assisted EEG Analysis', ln=1, align='C')
+            pdf.cell(0, 9, text='Automated EEG Analysis Report', ln=1, align='C')
             # draw a line 
             pdf.set_draw_color(0, 0, 0)
-            pdf.set_line_width(0.5)
-            pdf.line(10, 20, 200, 20)
-            pdf.set_font(fontName, size=13)
-            pdf.multi_cell(196, line_height-1, self.ai_report_text, 0, 'L')
+            pdf.set_line_width(0.4)
+            # pdf.line(10, 20, 200, 20)
+            pdf.line(10, pdf.get_y() + 1, 200, pdf.get_y() + 1)
+            # pdf.set_font(fontName, size=13)
+            # pdf.multi_cell(196, line_height-1, self.ai_report_text, 0, 'L')
+            pdf.ln(4)
+            self.renderReportText(pdf, fontName, body_size=11)
 
         # else:
         # 第一頁
-        pdf.set_font(fontName, size=18)
+        # pdf.set_font(fontName, size=18)
         pdf.add_page()
+        pdf.set_font(fontName, style="B", size=18)
         # 標題
-        pdf.cell(200, 16, text='Computer EEG Analysis - '+self.fileName, ln=1, align='C',border=0)
+        # pdf.cell(200, 16, text='Computer EEG Analysis - '+self.fileName, ln=1, align='C',border=0)
+        pdf.cell(0, 9, text="Automated Background Analysis", ln=1, align="C")
 
         # 文字大小
-        pdf.set_font(fontName, size=13)
-        pdf.cell(200, 8, text='(Informal Report)', ln=1, align='C',border=0)
+        pdf.set_font(fontName, size=11)
+        # pdf.cell(200, 8, text='(Informal Report)', ln=1, align='C',border=0)
+        pdf.cell(0, 6, text=self.fileName, ln=1, align="C")
+        pdf.ln(6)
 
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        table_width = 140
+        table_x = (pdf.w - table_width) / 2
+
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Drop epochs ratio', ln=0, align='L', border=1)
         #epochs比例
         color= (0, 0, 0)
@@ -173,7 +253,8 @@ class writePDF:
         pdf.cell(24, line_height, text=' ', ln=1, align='L', border=1)
 
         # 振幅
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Amplitudes(μV)', ln=0, align='L', border=1)
         # text='α: '+str(round(amplitudes[0], 1))+' β: '+str(round(amplitudes[1], 1))+' θ: '+str(round(amplitudes[2], 1))+' δ: '+str(round(amplitudes[3], 1))
         pdf.cell(17, line_height, text='α: '+str(round(amplitudes['alpha'], 1)), ln=0, align='L', border=1)
@@ -184,14 +265,16 @@ class writePDF:
 
         
         # 慢波比例
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Slow wave ratio', ln=0, align='L', border=1)
         pdf.cell(23, line_height, text=' Right', ln=0, align='L', border=1)
         pdf.cell(23, line_height, text=' Left', ln=0, align='L', border=1)
         pdf.cell(24, line_height, text=' Total', ln=1, align='L', border=1)
 
         #  左右、總慢波比例
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' <60', ln=0, align='R', border=1)
         color= (0, 0, 0)
         if right_slow_ratio>=60:
@@ -211,14 +294,16 @@ class writePDF:
         pdf.set_text_color(0, 0, 0)
 
         # 快波比例
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Beta wave ratio', ln=0, align='L', border=1)
         pdf.cell(23, line_height, text=' Right', ln=0, align='L', border=1)
         pdf.cell(23, line_height, text=' Left', ln=0, align='L', border=1)
         pdf.cell(24, line_height, text=' Total', ln=1, align='L', border=1)
 
         #  左右、
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' <30', ln=0, align='R', border=1)
         color= (0, 0, 0)
         if right_beta_ratio>=30:
@@ -239,13 +324,15 @@ class writePDF:
         pdf.set_text_color(0, 0, 0)
 
         # 前後gradient
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' AP gradient', ln=0, align='L', border=1)
         pdf.cell(23, line_height, text=' Right', ln=0, align='L', border=1)
         pdf.cell(23, line_height, text=' Left', ln=0, align='L', border=1)
         pdf.cell(24, line_height, text=' Total', ln=1, align='L', border=1)
 
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' <40', ln=0, align='R', border=1)
         color= (0, 0, 0)
         if right_AP_difference>=40:
@@ -266,7 +353,8 @@ class writePDF:
         pdf.set_text_color(0, 0, 0)
 
         # O1, O2 主頻率
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Background peak', ln=0, align='L', border=1)
         color= (0, 0, 0)
         if left_backgroud_frequency<8:
@@ -282,7 +370,8 @@ class writePDF:
 
         # O1, O2 主頻率差異
         fDiff=left_backgroud_frequency-right_backgroud_frequency
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Background difference', ln=0, align='L', border=1)
         color= (0, 0, 0)
         if abs(fDiff)>0.5:
@@ -304,7 +393,8 @@ class writePDF:
 
         
         # bad channels
-        pdf.cell(30, line_height, text='', ln=0, align='L')
+        # pdf.cell(30, line_height, text='', ln=0, align='L')
+        pdf.set_x(table_x)
         pdf.cell(70, line_height, text=' Bad electrodes', ln=0, align='L', border=1)
         pdf.set_text_color(255, 0, 0)
         pdf.cell(70, line_height, text=' '+','.join(bad_channels), ln=1, align='L', border=1)   
@@ -319,10 +409,12 @@ class writePDF:
         # jpgFile = self.dest_folder+'eeg5.jpg'
         # pdf.image(jpgFile, x=10, y=20, w=280)
         pdf.add_page(orientation='P')
-        pdf.set_font(fontName, size=18)
-        pdf.cell(196, line_height, text='EEG Epochs (4s each)', ln=1, align='C')
+        # pdf.set_font(fontName, size=18)
+        # pdf.cell(196, line_height, text='EEG Epochs (4s each)', ln=1, align='C')
+        pdf.set_font(fontName, style="B", size=18)
+        pdf.cell(0, 9, text="EEG Epochs (4s each)", ln=1, align="C")
         jpgFile = self.dest_folder + 'eeg5.jpg'
-        self.addImageFit(pdf, jpgFile, x=10, y=25, max_width=190, max_height=255)
+        self.addImageFit(pdf, jpgFile, x=10, y=24, max_width=190, max_height=255)
         
         # 第二頁
         # pdf.add_page()
@@ -332,10 +424,11 @@ class writePDF:
         # jpgFile=self.dest_folder+'eeg3.jpg'
         # pdf.image(jpgFile, w=200, x=10, y=25)
         pdf.add_page(orientation='P')
-        pdf.set_font(fontName, size=18)
-        pdf.cell(196, line_height, text='Topography and Power Spectrum', ln=1, align='C')
+        pdf.set_font(fontName, style="B", size=18)
+        # pdf.cell(196, line_height, text='Topography and Power Spectrum', ln=1, align='C')
+        pdf.cell(0, 9, text='Regional Power Spectral Density', ln=1, align='C')
         jpgFile = self.dest_folder + 'eeg3.jpg'
-        self.addImageFit(pdf, jpgFile, x=10, y=22, max_width=190, max_height=260)
+        self.addImageFit(pdf, jpgFile, x=10, y=24, max_width=190, max_height=260)
 
         # 第三頁
         # pdf.add_page()
@@ -345,10 +438,11 @@ class writePDF:
         # jpgFile=self.dest_folder+'eeg4.jpg'
         # pdf.image(jpgFile, w=200, x=10, y=25)
         pdf.add_page(orientation='P')
-        pdf.set_font(fontName, size=18)
-        pdf.cell(196, line_height, text='Spectrogram', ln=1, align='C')
+        pdf.set_font(fontName, style="B", size=18)
+        # pdf.cell(196, line_height, text='Spectrogram', ln=1, align='C')
+        pdf.cell(0, 9, text='Spectrogram', ln=1, align='C')
         jpgFile = self.dest_folder + 'eeg4.jpg'
-        self.addImageFit(pdf, jpgFile, x=10, y=22, max_width=190, max_height=260)
+        self.addImageFit(pdf, jpgFile, x=10, y=24, max_width=190, max_height=258)
 
         outFile=self.dest_folder+self.fileName.split('.')[0]+'.pdf'
         pdf.output(outFile)
@@ -547,6 +641,7 @@ class writePDF:
 
         # plot 4 columns
         fig, ax = plt.subplots(3,4, figsize=(12,9))
+        fig.suptitle("Power Spectrum Topomaps", fontsize=18)
         # grid line
         fig.subplots_adjust( hspace=0.5)
         fv = 0.2
