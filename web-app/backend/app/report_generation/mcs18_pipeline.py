@@ -347,10 +347,8 @@ def format_seizure_section(seizure_detection):
             parts.append(f"maximum model probability: {float(max_probability):.3f}")
         lines.append(f"- {'; '.join(parts)}.")
 
-    lines.append(
-        "- These intervals are automated candidate detections and require "
-        "clinical review; model probabilities do not represent diagnostic certainty."
-    )
+    lines.append("- These intervals are automated candidate detections and require clinical review.")
+    lines.append("- Model probabilities do not represent diagnostic certainty.")
     return "\n".join(lines)
 
 
@@ -366,15 +364,17 @@ def format_annotation_section(annotation_results):
     for index, annotation in enumerate(annotations, start=1):
         start = format_seconds(annotation.get("start_seconds"))
         end = format_seconds(annotation.get("end_seconds"))
-        lines.append(f"- Annotation {index}: {start} - {end}.")
+        lines.append(f"- Annotation {index} — {start} - {end}")
 
         channels = annotation.get("channels") or []
         if channels:
-            lines.append(f"  Channels: {', '.join(channels)}.")
+            lines.append(f"  Channels: {', '.join(channels)}")
+        else:
+            lines.append("  Channels: All visible channels")
 
         label = annotation.get("label")
         if label:
-            lines.append(f"  Reviewer-selected label: {label}.")
+            lines.append(f"  Reviewer-selected label: {label}")
 
         notes = annotation.get("notes")
         if notes:
@@ -384,61 +384,67 @@ def format_annotation_section(annotation_results):
 
 def fallback_conclusion(combined):
     background = combined["background_analysis"]
-    parts = []
+    impression = []
     quality = background.get("EEG_quality")
     background_activity = background.get("bg_active")
     abnormalities = background.get("abnormalFindings") or []
+    bad_channels = background.get("bad_channels") or []
 
     if quality:
-        parts.append(f"The recording was assessed as having {quality.lower()} technical quality.")
+        impression.append(f"The recording was assessed as having {quality.lower()} technical quality.")
 
     if background_activity:
         if background_activity.lower() == "normal background frequency":
-            parts.append("Automated background analysis classfied the background frequency as normal.")
+            impression.append("Automated background analysis classified the background frequency as normal.")
         else:
-            parts.append(f"Automated background analysis identified {background_activity.lower()}.")
+            impression.append(f"Automated background analysis identified {background_activity.lower()}.")
 
     if abnormalities:
-        if background_activity and background_activity.lower() == "normal background frequency":
-            parts.append("However, abnormal findings were identified in other assessed background features.")
-        elif not background_activity:
-            parts.append("The automated background-analysis pipeline identified abnormal findings.")
+        impression.append("Additional abnormal findings were identified by the automated background-analysis pipeline.")
 
     seizure_detection = combined.get("seizure_detection")
+    seizure_count = 0
     if seizure_detection is not None:
-        count = seizure_detection.get("seizure_count", 0)
-        if count:
-            parts.append(
-                f"The seizure-detection model identified {count} candidate "
-                f"interval{'s' if count != 1 else ''} requiring clinical review."
+        seizure_count = seizure_detection.get("seizure_count", 0)
+        if seizure_count:
+            impression.append(
+                f"The automated seizure-detection model identified {seizure_count} candidate "
+                f"interval{'s' if seizure_count != 1 else ''} requiring clinical review."
             )
         else:
-            parts.append("The seizure-detection model returned no candidate seizure intervals.")
+            impression.append("The automated seizure-detection model returned no candidate seizure intervals.")
 
     annotation_results = combined.get("annotations")
     annotation_count = 0
     if annotation_results is not None:
         annotation_count = len(annotation_results.get("annotations") or [])
         if annotation_count:
-            parts.append(f"The recording contains {annotation_count} reviewer annotation{'s' if annotation_count != 1 else ''}.")
+            impression.append(f"The recording contains {annotation_count} reviewer annotation{'s' if annotation_count != 1 else ''}.")
 
-    parts.append("These findings should be interpreted in conjunction with")
+    impression.append("These findings require clinical review and correlation with the EEG recording and relevant clinical information.")
+
+    next_steps = []
+    if seizure_count:
+        next_steps.append("Review the automated seizure candidate intervals against the EEG recording.")
     if annotation_count:
-        parts.append("the EEG recording, reviewer annotations, and relevant clinical information.")
-    else:
-        parts.append("the EEG recording and relevant clinical information.")
-    return f"=== Conclusion ===\n{' '.join(parts)}"
+        next_steps.append("Review the reviewer annotations together with the automated findings.")
+    if bad_channels or (quality and quality.lower() != "good"):
+        next_steps.append("Consider the identified technical limitations and flagged channels when interpreting the recording.")
+
+    next_steps.append("Correlate the automated findings with relevant clinical information and consider further review or investigation if clinically indicated.")
+
+    return "=== Impression ===\n" + " ".join(impression) + "\n\n=== Suggested Next Steps ===\n" + "\n".join(f"- {item}" for item in next_steps)
 
 
 def build_report_text(combined, ai_report_text=None, seizure_detection_status="completed"):
-    recording_metadata = combined["recording_metadata"]
+    # recording_metadata = combined["recording_metadata"]
     sections = [
-        format_patient_information(recording_metadata),
-        format_test_information(recording_metadata),
-        format_recording_metadata(recording_metadata),
+        # format_patient_information(recording_metadata),
+        # format_test_information(recording_metadata),
+        # format_recording_metadata(recording_metadata),
         format_background_section(combined["background_analysis"])
     ]
-    sections = [section for section in sections if section]
+    # sections = [section for section in sections if section]
 
     if seizure_detection_status == "failed":
         sections.append(
@@ -519,6 +525,7 @@ def generate_report_from_analysis(
     output_folder = Path(output_root) / eeg_path.stem
     artifacts = report.generate_pdf(
         ai_report_text=report_text,
+        report_data=combined,
         dest_pdfPath=str(output_folder)
     )
 

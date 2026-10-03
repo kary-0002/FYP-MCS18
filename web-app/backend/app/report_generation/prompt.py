@@ -294,40 +294,60 @@ Important rules:
 6. If seizure_detection is supplied with seizure_count = 0, state only that the automated detector returned no candidate seizure intervals. Do not state that the EEG contains no seizures.
 7. Do not claim that epileptiform discharges, spikes, sharp waves, or other EEG features are present or absent unless explicitly supplied.
 8. Clearly distinguish automated background-analysis findings, automated seizure-detection results, and reviewer annotations where relevant.
-9. Do not repeat detailed timestamps, probability values, or individual annotation details because these are presented elsewhere in the report.
-10. Do not prescribe treatment or imply that any investigation is mandatory.
+9. Do not repeat every timestamp, probability value, or annotation because these are already presented elsewhere in the report.
+10. Do not prescribe treatment or make a diagnosis.
 
 
 Task:
 
-=== Conclusion ===
-Write a concise professional summary of the clinically relevant automated findings.
-- Do not repeat exact frequencies, amplitudes, probability values, timestamps, or channel names unless they are necessary to understand the conclusion.
-- If the "annotations" component is not supplied, do not mention reviewer annotations.
-- Focus on the main background abnormality, the presence or absence of candidate seizure detections, and any clinically relevant reviewer information.
-- If a relevant abnormal automated finding is present, include at most one brief sentence describing its general clinical significance.
-- Present clinical significance only as a general association, not as a diagnosis or conclusion about this patient.
-- When describing general clinical significance, keep it broad and cautious. Do not introduce specific causes or diagnoses that are not supplied in the structured findings.
-  For diffuse background slowing, wording such as "a nonspecific finding that may be associated with diffuse cerebral dysfunction" is appropriate.
-- Do not infer frequency-band labels or other derived interpretations from numerical values unless they are explicitly supplied in the structured findings.
-- State that the findings should be interpreted together with the EEG recording and relevant clinical information.
-- Keep this section to approximately 80 to 120 words.
+=== Impression ===
+Provide a professional and reasonably substantive synthesis of the available EEG findings.
+Summarise the automated background-analysis findings and, where supplied, the automated seizure-detection results and reviewer annotations.
+State important limitations where relevant, including technical quality or flagged channels.
+Make clear that automated findings require clinical review and correlation with the EEG recording and relevant clinical information.
 
 === Suggested Next Steps ===
-Provide at most 2 concise bullet points describing conditional considerations for clinical review.
-- Each bullet should contain only one sentence.
-- Do not repeat detailed findings already stated elsewhere.
-- Suggestions may include direct EEG review, review of candidate intervals, correlation with available video or clinical information, or assessment of artifact-affected channels where relevant.
-- Do not prescribe treatment.
-- Do not imply that any investigation is mandatory.
-- Keep this section to approximately 40 to 60 words.
-- Use "-" for every bullet and place each bullet on its own line.
+Provide a short list of clinically appropriate, conditional review considerations based only on the supplied findings.
+Where relevant, these may include:
+- review of automated seizure candidate intervals against the EEG recording;
+- review of reviewer annotations and their relationship to automated findings;
+- consideration of flagged channels or technical limitations;
+- correlation with relevant clinical history;
+- further EEG review or other investigation if clinically indicated.
+Recommendations must be conditional.
+Do not prescribe treatment.
+Do not state that an investigation is mandatory.
 
+Important formatting requirement:
+Enclose both section titles in === exactly as shown above.
 Do not include any sections other than the two sections above.
-Enclose every section title in === exactly as shown above.
+
 Generate the sections in {}.
 """.format(findings_json, reportLang)
     return message
+
+# === Conclusion ===
+# Write a concise professional summary of the clinically relevant automated findings.
+# - Do not repeat exact frequencies, amplitudes, probability values, timestamps, or channel names unless they are necessary to understand the conclusion.
+# - If the "annotations" component is not supplied, do not mention reviewer annotations.
+# - Focus on the main background abnormality, the presence or absence of candidate seizure detections, and any clinically relevant reviewer information.
+# - If a relevant abnormal automated finding is present, include at most one brief sentence describing its general clinical significance.
+# - Present clinical significance only as a general association, not as a diagnosis or conclusion about this patient.
+# - When describing general clinical significance, keep it broad and cautious. Do not introduce specific causes or diagnoses that are not supplied in the structured findings.
+#   For diffuse background slowing, wording such as "a nonspecific finding that may be associated with diffuse cerebral dysfunction" is appropriate.
+# - Do not infer frequency-band labels or other derived interpretations from numerical values unless they are explicitly supplied in the structured findings.
+# - State that the findings should be interpreted together with the EEG recording and relevant clinical information.
+# - Keep this section to approximately 80 to 120 words.
+
+# === Suggested Next Steps ===
+# Provide at most 2 concise bullet points describing conditional considerations for clinical review.
+# - Each bullet should contain only one sentence.
+# - Do not repeat detailed findings already stated elsewhere.
+# - Suggestions may include direct EEG review, review of candidate intervals, correlation with available video or clinical information, or assessment of artifact-affected channels where relevant.
+# - Do not prescribe treatment.
+# - Do not imply that any investigation is mandatory.
+# - Keep this section to approximately 40 to 60 words.
+# - Use "-" for every bullet and place each bullet on its own line.
 
 
 def validatePrompt(text):

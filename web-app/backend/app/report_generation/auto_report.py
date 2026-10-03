@@ -333,13 +333,15 @@ class CreateReport:
         return raw, results
 
 
-    def generate_pdf(self, ai_report_text=None, dest_pdfPath=None):
+    def generate_pdf(self, ai_report_text=None, report_data=None, dest_pdfPath=None):
         """
         Generate the EEG PDF using the analysis results already produced.
         Parameters
         ----------
         ai_report_text : str, optional
             AI report text to include in the PDF.
+        report_data : dict, optional
+            Data for generating the report.
         dest_pdfPath : str, optional
             Output folder for the PDF and graph images.
         Returns
@@ -372,7 +374,8 @@ class CreateReport:
             dest_pdfPath,
             self.sample_rate,
             self.raw.ch_names,
-            ai_report_text
+            ai_report_text=ai_report_text,
+            report_data=report_data
         )
 
         recording_id = os.path.splitext(self.fileName)[0]
