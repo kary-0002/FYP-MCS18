@@ -28,7 +28,12 @@ const colors = {
   Other: "#bd7a9c",
 };
 
-const API_BASE_URL = "https://fyp-api.azutoro.com";
+// const API_BASE_URL = "https://fyp-api.azutoro.com";
+const API_BASE_URL =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1"
+    ? "http://127.0.0.1:8000"
+    : "https://fyp-api.azutoro.com";
 
 
 async function createAnalysisSession(file) {
