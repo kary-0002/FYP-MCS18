@@ -1,5 +1,6 @@
 import os
 import pyedflib
+import numpy as np
 from pathlib import Path
 from datetime import datetime
 
@@ -8,6 +9,70 @@ from .auto_report import CreateReport
 
 REPORTING_DIR = Path(__file__).resolve().parent
 MODEL_DIR = REPORTING_DIR / "models"
+
+
+def calculate_relative_band_power(report):
+    data, freqs = report.psds.get_data(return_freqs=True)
+    # Average PSD across EEG channels.
+    mean_psd = np.mean(data, axis=0)
+    bands = {
+        "delta": (1, 4),
+        "theta": (4, 8),
+        "alpha": (8, 13),
+        "beta": (13, 30)
+    }
+    total_mask = (freqs >= 1) & (freqs <= 30)
+    total_power = np.trapezoid(mean_psd[total_mask], freqs[total_mask])
+    relative_power = {}
+    for name, (low, high) in bands.items():
+        mask = (freqs >= low) & (freqs < high)
+        band_power = np.trapezoid(mean_psd[mask], freqs[mask])
+        relative_power[name] = (float(band_power / total_power) if total_power > 0 else None)
+    return relative_power
+
+
+def build_background_analysis_payload(report):
+    results = report.results
+    summary = report.finalResults
+    return {
+        "summary": summary,
+        "metrics": {
+            "dominant_frequency_hz": {
+                "left": float(results["left_backgroud_frequency"]),
+                "right": float(results["right_backgroud_frequency"])
+            },
+            "relative_band_power": calculate_relative_band_power(report),
+            "amplitude_uv": {
+                "delta": float(results["amplitudes"]["delta"]),
+                "theta": float(results["amplitudes"]["theta"]),
+                "alpha": float(results["amplitudes"]["alpha"]),
+                "beta": float(results["amplitudes"]["beta"])
+            },
+            "slow_wave_ratio_percent": {
+                "left": float(results["left_slow_ratio"]),
+                "right": float(results["right_slow_ratio"]),
+                "total": float(results["total_slow_ratio"])
+            },
+            "beta_wave_ratio_percent": {
+                "left": float(results["left_beta_ratio"]),
+                "right": float(results["right_beta_ratio"]),
+                "total": float(results["total_beta_ratio"])
+            },
+            "ap_gradient_percent": {
+                "left": float(results["left_AP_difference"]),
+                "right": float(results["right_AP_difference"]),
+                "total": float(results["AP_difference"])
+            },
+            "left_right_asymmetry": {
+                "delta": [float(value) for value in results["LR_delta_ratio"]],
+                "theta": [float(value) for value in results["LR_theta_ratio"]],
+                "alpha": [float(value) for value in results["LR_alpha_ratio"]]
+            },
+            "removed_epoch_percent": float(results["removeEpochsRatio"]),
+            "bad_channels": list(results["bad_channels"]),
+            "technical_quality": summary.get("EEG_quality")
+        }
+    }
 
 
 def analyze_eeg(eeg_path):
@@ -477,7 +542,8 @@ def prepare_analysis(eeg_path, nicolet_metadata=None):
     )
     return {
         "report": report,
-        "recording_metadata": recording_metadata
+        "recording_metadata": recording_metadata,
+        "background_analysis": build_background_analysis_payload(report)
     }
 
 

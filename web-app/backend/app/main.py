@@ -107,7 +107,8 @@ async def post_upload_veeg(
             "original_filename": original_filename,
             "nicolet_metadata": nicolet_metadata,
             "report": None,
-            "recording_metadata": None
+            "recording_metadata": None,
+            "background_analysis": None
         }
 
         display_metadata = None
@@ -197,7 +198,11 @@ async def post_background_analysis(session_id: str):
         )
         session["report"] = analysis["report"]
         session["recording_metadata"] = analysis["recording_metadata"]
-        return {"status": "completed"}
+        session["background_analysis"] = analysis["background_analysis"]
+        return {
+            "status": "completed",
+            "background_analysis": analysis["background_analysis"]
+        }
 
     except Exception as exc:
         print("Background analysis failed:", exc)
