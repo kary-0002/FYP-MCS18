@@ -323,6 +323,7 @@ async function openFile(file) {
       .slice(0, Math.min(24, usable.length))
       .map((s) => s.index);
     loadLocal();
+    ensureAutomatedSeizureAnnotations();
     if (uploadResult?.recording_metadata) {
       state.recordingMetadata = uploadResult.recording_metadata;
       saveLocal();
@@ -368,6 +369,8 @@ async function openFile(file) {
         state.analysisSessionId = uploadResult.session_id;
         state.recordingMetadata = uploadResult.recording_metadata ?? state.recordingMetadata;
         saveLocal();
+        renderAnnotations();
+        draw();
       }
       if (shouldRunSeizure) {
         state.seizureDetectionStatus = "running";
@@ -386,9 +389,11 @@ async function openFile(file) {
             state.seizureDetection = detectionResult.seizure_detection;
             state.seizureDetectionStatus = "completed";
             state.seizureDetectionRunAt = new Date().toISOString();
+            syncAutomatedSeizureAnnotations();
             saveLocal();
             console.log("Seizure detection result:", state.seizureDetection);
             renderDetectedSeizures();
+            renderAnnotations();
             draw();
           } else {
             state.seizureDetection = null;
@@ -588,50 +593,11 @@ function draw() {
     }
     c.stroke();
   });
-  drawSeizureDetection(c, left, top, pw, ph);
   drawAnnotations(c, left, top, pw, ph);
-}
-function drawSeizureDetection(c, left, top, pw, ph) {
-  const seizures = state.seizureDetection?.seizures || [];
-
-  seizures
-    .filter(
-      (s) =>
-        s.end_time >= state.start &&
-        s.start_time <= state.start + state.window,
-    )
-    .forEach((s) => {
-      const visibleStart = Math.max(s.start_time, state.start);
-      const visibleEnd = Math.min(
-        s.end_time,
-        state.start + state.window,
-      );
-
-      const x1 =
-        left +
-        ((visibleStart - state.start) / state.window) * pw;
-
-      const x2 =
-        left +
-        ((visibleEnd - state.start) / state.window) * pw;
-
-      // Highlight the detected seizure region
-      c.fillStyle = "rgba(215, 90, 84, 0.14)";
-      c.fillRect(x1, top, Math.max(2, x2 - x1), ph);
-
-      // Draw the start boundary
-      c.fillStyle = "#d75a54";
-      c.fillRect(x1, top, 3, ph);
-
-      // Show detection label
-      c.font = "9px DM Sans";
-      c.textAlign = "left";
-      c.fillStyle = "#d75a54";
-      c.fillText("AI detected seizure", x1 + 5, top + 11);
-    });
 }
 function drawAnnotations(c, left, top, pw, ph) {
   state.annotations
+    .filter((a) => !(a.origin === "automated" && a.rejected))
     .filter(
       (a) =>
         a.endSec >= state.start && a.startSec <= state.start + state.window,
@@ -652,7 +618,8 @@ function drawAnnotations(c, left, top, pw, ph) {
       c.fillRect(x1, top, 3, ph);
       c.font = "9px DM Sans";
       c.textAlign = "left";
-      c.fillText(a.label, x1 + 5, top + 11);
+      const displayLabel = a.origin === "automated" ? "Seizure candidate" : a.label;
+      c.fillText(displayLabel, x1 + 5, top + 11);
     });
 }
 function clearSelection() {
@@ -682,6 +649,49 @@ function setSelection(a, b) {
   $("#selectionLabel").textContent = `${(end - start).toFixed(2)}s`;
   $("#newAnnotation").disabled = false;
 }
+function syncAutomatedSeizureAnnotations() {
+  const seizures = state.seizureDetection?.seizures || [];
+  // A fresh detection run replaces the previous automated candidates.
+  state.annotations = state.annotations.filter(
+    (annotation) => annotation.origin !== "automated"
+  );
+  const runAt = state.seizureDetectionRunAt || new Date().toISOString();
+  seizures.forEach((seizure, index) => {
+    const startSec = seizure.start_time ?? seizure.start_seconds;
+    const endSec = seizure.end_time ?? seizure.end_seconds;
+    if (startSec == null || endSec == null) return;
+    state.annotations.push({
+      id: `automated-seizure-${runAt}-${index}`,
+      startSec,
+      endSec,
+      label: "Seizure",
+      notes: "",
+      channels: [],
+      origin: "automated",
+      rejected: false,
+      model: {
+        meanProbability: seizure.mean_probability ?? null,
+        maxProbability: seizure.max_probability ?? null,
+        durationSeconds: seizure.duration ?? seizure.duration_seconds ?? (endSec - startSec),
+      },
+      createdAt: runAt,
+      updatedAt: runAt
+    });
+  });
+  state.annotations.sort((a, b) => a.startSec - b.startSec);
+}
+function ensureAutomatedSeizureAnnotations() {
+  const hasAutomated = state.annotations.some(
+    (annotation) => annotation.origin === "automated"
+  );
+  if (
+    !hasAutomated &&
+    state.seizureDetectionStatus === "completed" &&
+    (state.seizureDetection?.seizures || []).length
+  ) {
+    syncAutomatedSeizureAnnotations();
+  }
+}
 function renderDetectedSeizures() {
   let section = $("#detectedSeizures");
 
@@ -695,128 +705,133 @@ function renderDetectedSeizures() {
 
   if (state.seizureDetectionStatus === "running") {
     section.innerHTML = `
-      <div style="margin-top: 18px; margin-bottom: 12px;">
-        <div style="font-weight: 600; margin-bottom: 4px;">
-          Seizure Detection
-        </div>
-        <div style="font-size: 12px; color: #6d7c78;">
-          Analysing recording...
-        </div>
+      <div style="margin-top: 12px; margin-bottom: 10px; font-size: 12px; color: #6d7c78;">
+        Automated seizure detection in progress...
       </div>
     `;
     return;
   }
-
   if (state.seizureDetectionStatus === "failed") {
     section.innerHTML = `
-      <div style="margin-top: 18px; margin-bottom: 12px;">
-        <div style="font-weight: 600; margin-bottom: 4px;">
-          Seizure Detection
-        </div>
-        <div style="font-size: 12px; color: #6d7c78;">
-          Seizure detection unavailable.
-        </div>
+      <div style="margin-top: 12px; margin-bottom: 10px; font-size: 12px; color: #6d7c78;">
+        Automated seizure detection unavailable.
       </div>
     `;
     return;
   }
-
-  const seizures = state.seizureDetection?.seizures || [];
-
-  if (!seizures.length) {
+  if (state.seizureDetectionStatus === "completed" && !(state.seizureDetection?.seizures || []).length) {
     section.innerHTML = `
-      <div style="margin-top: 18px; margin-bottom: 12px;">
-        <div style="font-weight: 600; margin-bottom: 4px;">
-          Seizure Detection
-        </div>
-        <div style="font-size: 12px; color: #6d7c78;">
-          No candidate seizures detected.
-        </div>
+      <div style="margin-top: 12px; margin-bottom: 10px; font-size: 12px; color: #6d7c78;">
+        No automated seizure candidates detected.
       </div>
     `;
     return;
   }
-
-  section.innerHTML = `
-    <div style="margin-top: 18px; margin-bottom: 12px;">
-      <div style="font-weight: 600; margin-bottom: 4px;">
-        Seizure Detection
-      </div>
-      <div id="detectedSeizureList"></div>
-    </div>
-  `;
-
-  const list = $("#detectedSeizureList");
-  list.style.maxHeight = "150px";
-  list.style.overflowY = "auto";
-  list.style.paddingRight = "4px";
-
-  seizures.forEach((seizure, index) => {
-    const item = document.createElement("button");
-
-    item.type = "button";
-    item.style.display = "block";
-    item.style.width = "100%";
-    item.style.textAlign = "left";
-    item.style.marginBottom = "6px";
-    item.style.padding = "8px";
-    item.style.cursor = "pointer";
-
-    item.textContent =
-      `Seizure ${index + 1}: ${fmt(seizure.start_time, true)} - ${fmt(seizure.end_time, true)}`;
-
-    item.onclick = () => {
-      // Jump slightly before the detected seizure
-      state.start = Math.max(
-        0,
-        seizure.start_time - state.window * 0.15,
-      );
-
-      render();
-    };
-
-    list.appendChild(item);
-  });
+  section.innerHTML = "";
 }
 function renderAnnotations() {
   const box = $("#annotationList");
-  $("#annotationCount").textContent = state.annotations.length;
-  if (!state.annotations.length) {
-    box.innerHTML =
-      '<div class="aside-empty">Select a region of the waveform to add a clinical annotation.</div>';
+  const annotations = state.annotations
+    .filter((annotation) => !(annotation.origin === "automated" && annotation.rejected))
+    .sort((a, b) => a.startSec - b.startSec);
+  $("#annotationCount").textContent = annotations.length;
+  if (!annotations.length) {
+    box.innerHTML = '<div class="aside-empty">Select a region of the waveform to add a clinical annotation.</div>';
     return;
   }
   box.innerHTML = "";
-  [...state.annotations]
-    .sort((a, b) => a.startSec - b.startSec)
-    .forEach((a) => {
-      const el = document.createElement("div");
-      el.className = "annotation";
-      el.style.borderLeftColor = colors[a.label] || colors.Other;
-      el.innerHTML = `<div class="annotation-top"><span class="annotation-label"></span><span class="annotation-actions"><button class="mini edit" title="Edit">✎</button><button class="mini delete" title="Delete">×</button></span></div><div class="annotation-time">${fmt(a.startSec, true)} — ${fmt(a.endSec, true)}</div><div class="annotation-note"></div>`;
-      el.querySelector(".annotation-label").textContent = a.label;
+  annotations.forEach((a) => {
+    const origin = a.origin || "reviewer";
+    const automated = origin === "automated";
+    const el = document.createElement("div");
+    el.className = "annotation";
+    el.style.borderLeftColor = colors[a.label] || colors.Other;
+    el.innerHTML = `
+      <div class="annotation-top">
+        <span class="annotation-label"></span>
+        <span class="annotation-actions">
+          ${automated ? "" : '<button class="mini edit" title="Edit">✎</button>'}
+          <button class="mini delete" title="${automated ? "Reject" : "Delete"}">×</button>
+        </span>
+      </div>
+      <div class="annotation-time">
+        ${fmt(a.startSec, true)} — ${fmt(a.endSec, true)}
+      </div>
+      <div class="annotation-note"></div>
+    `;
+    el.querySelector(".annotation-label").textContent = automated ? "Seizure candidate" : a.label;
+    if (automated) {
+      const mean = a.model?.meanProbability;
+      const max = a.model?.maxProbability;
+      const details = [
+        mean != null ? `Mean probability: ${(Number(mean) * 100).toFixed(1)}%` : null,
+        max != null ? `Max probability: ${(Number(max) * 100).toFixed(1)}%` : null
+      ].filter(Boolean);
+      const note = el.querySelector(".annotation-note");
+      note.textContent = details.join("\n");
+      note.style.whiteSpace = "pre-line";
+    } else {
       el.querySelector(".annotation-note").textContent = a.notes || "No notes";
-      el.onclick = () => {
-        state.start = Math.max(0, a.startSec - state.window * 0.15);
-        render();
-      };
-      el.querySelector(".edit").onclick = (e) => {
+    }
+    el.onclick = () => {
+      state.start = Math.max(0, a.startSec - state.window * 0.15);
+      render();
+    };
+    const editButton = el.querySelector(".edit");
+    if (editButton) {
+      editButton.onclick = (e) => {
         e.stopPropagation();
         openAnnotationDialog(a);
       };
-      el.querySelector(".delete").onclick = (e) => {
-        e.stopPropagation();
-        if (confirm(`Delete “${a.label}” annotation?`)) {
-          state.annotations = state.annotations.filter((x) => x.id !== a.id);
-          markReportOutOfDate();
-          saveLocal();
-          renderAnnotations();
-          draw();
-          toast("Annotation deleted");
-        }
-      };
-      box.append(el);
-    });
+    }
+    el.querySelector(".delete").onclick = (e) => {
+      e.stopPropagation();
+      if (automated) {
+        if (!confirm("Reject this automated seizure candidate?")) return;
+        state.annotations = state.annotations.map((annotation) => 
+          annotation.id === a.id
+            ? {
+                ...annotation,
+                rejected: true,
+                updatedAt: new Date().toISOString()
+              }
+            : annotation
+        );
+        markReportOutOfDate();
+        saveLocal();
+        renderAnnotations();
+        draw();
+        toast("Seizure candidate rejected");
+        return;
+      }
+      if (confirm(`Delete this reviewer annotation?`)) {
+        state.annotations = state.annotations.filter((x) => x.id !== a.id);
+        markReportOutOfDate();
+        saveLocal();
+        renderAnnotations();
+        draw();
+        toast("Reviewer annotation deleted");
+      }
+    };
+    box.append(el);
+  })
+}
+function buildReportSeizureDetection() {
+  if (!state.seizureDetection) return null;
+  const candidates = state.annotations.filter(
+    (annotation) => annotation.origin === "automated" && !annotation.rejected
+  );
+  return {
+    ...state.seizureDetection,
+    seizure_count: candidates.length,
+    seizures: candidates.map((annotation) => ({
+      start_time: annotation.startSec,
+      end_time: annotation.endSec,
+      duration: annotation.model?.durationSeconds ?? (annotation.endSec - annotation.startSec),
+      mean_probability: annotation.model?.meanProbability ?? null,
+      max_probability: annotation.model?.maxProbability ?? null
+    }))
+  };
 }
 function openAnnotationDialog(annotation = null) {
   const range = annotation || state.selection;
@@ -938,6 +953,7 @@ $("#saveAnnotation").onclick = (e) => {
       .value.split(",")
       .map((x) => x.trim())
       .filter(Boolean),
+    origin: range.origin || "reviewer",
     author: "",
     createdAt: range.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -982,11 +998,13 @@ $("#generateReport").onclick = async () => {
       startDate: state.edf.startDate,
       startTime: state.edf.startTime,
     },
-    annotations: state.annotations,
+    annotations: state.annotations.filter(
+      (annotation) => annotation.origin !== "automated"
+    )
   };
   const formData = new FormData();
   formData.append("session_id", state.analysisSessionId);
-  formData.append("seizure_results_json", JSON.stringify(state.seizureDetection));
+  formData.append("seizure_results_json", JSON.stringify(buildReportSeizureDetection()));
   formData.append("annotation_results_json", JSON.stringify(annotationResults));
   formData.append("seizure_detection_status", state.seizureDetectionStatus);
   try {
@@ -1064,6 +1082,7 @@ $("#annotationInput").onchange = async (e) => {
     }
     state.reportGeneratedAt = json.report?.generatedAt ?? null;
     state.reportOutOfDate = json.report?.outOfDate ?? false;
+    ensureAutomatedSeizureAnnotations();
     saveLocal();
     renderAnnotations();
     renderDetectedSeizures();
