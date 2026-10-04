@@ -10,8 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from app.seizure_detection import detect_seizures
-from app.report_generation.mcs18_pipeline import generate_report_from_analysis, prepare_analysis
 from app.nicolet_metadata import extract_nicolet_metadata
+from app.report_generation.mcs18_pipeline import (
+    generate_report_from_analysis,
+    prepare_analysis,
+    extract_recording_metadata
+)
 
 
 app = FastAPI()
@@ -97,6 +101,10 @@ async def post_upload_veeg(
         else:
             source_format = "edf"
             eeg_path = source_path
+
+        recording_metadata = extract_recording_metadata(eeg_path)
+        if nicolet_metadata is not None:
+            recording_metadata["nicolet"] = nicolet_metadata
         
         session_id = str(uuid4())
         ANALYSIS_SESSIONS[session_id] = {
@@ -107,24 +115,14 @@ async def post_upload_veeg(
             "original_filename": original_filename,
             "nicolet_metadata": nicolet_metadata,
             "report": None,
-            "recording_metadata": None,
+            "recording_metadata": recording_metadata,
             "background_analysis": None
         }
-
-        display_metadata = None
-        if nicolet_metadata is not None:
-            patient = nicolet_metadata.get("patient", {})
-            study = nicolet_metadata.get("study", {}).get("mapped", {})
-            display_metadata = {
-                "patient_id": patient.get("altID"),
-                "test_id": study.get("test_id")
-            }
-
         return {
             "session_id": session_id,
             "source_format": source_format,
             "edf_filename": Path(eeg_path).name,
-            "display_metadata": display_metadata
+            "recording_metadata": recording_metadata
         }
 
     except Exception as exc:
@@ -201,6 +199,7 @@ async def post_background_analysis(session_id: str):
         session["background_analysis"] = analysis["background_analysis"]
         return {
             "status": "completed",
+            "recording_metadata": analysis["recording_metadata"],
             "background_analysis": analysis["background_analysis"]
         }
 
