@@ -337,17 +337,64 @@ def prediction_to_intervals(
             )
         })
 
+    # Merge seizure intervals separated by short gaps
+    merge_gap = 3.5
+
+    merged_intervals = []
+
+    for interval in intervals:
+        if not merged_intervals:
+            merged_intervals.append(interval)
+            continue
+
+        previous = merged_intervals[-1]
+
+        gap = interval["start_time"] - previous["end_time"]
+
+        if gap <= merge_gap:
+            previous["end_time"] = interval["end_time"]
+            previous["duration"] = round(
+                previous["end_time"] - previous["start_time"],
+                2
+            )
+
+            start_idx = int(previous["start_time"] * fs)
+            end_idx = int(previous["end_time"] * fs)
+
+            merged_probs = prediction[start_idx:end_idx]
+
+            previous["mean_probability"] = round(
+                float(np.mean(merged_probs)),
+                4
+            )
+
+            previous["max_probability"] = round(
+                float(np.max(merged_probs)),
+                4
+            )
+        else:
+            merged_intervals.append(interval)
+
+    intervals = merged_intervals
+
     return intervals, binary_output
 
 def detect_seizures(
     edf_path,
     checkpoint_path,
-    threshold=0.8,
+    threshold=0.25,
     batch_size=32
 ):
     # Load EEG from the EDF file
     eeg_data, sample_rate = load_eeg(
         edf_path
+    )
+
+    # Apply average reference across the 19 model channels
+    eeg_data = eeg_data - np.mean(
+        eeg_data,
+        axis=0,
+        keepdims=True
     )
 
     original_duration = (

@@ -164,7 +164,7 @@ async def post_seizure_detection(session_id: str):
         result = detect_seizures(
             edf_path=session["eeg_path"],
             checkpoint_path=MODEL_PATH,
-            threshold=0.2
+            threshold=0.25
         )
         # Keep the original uploaded filename in the response
         result["file"] = Path(session["eeg_path"]).name
