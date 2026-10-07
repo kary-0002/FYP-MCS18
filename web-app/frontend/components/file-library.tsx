@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  buildRecordingPaths,
   buildStoragePath,
   classifyFile,
   FILE_BUCKET,
@@ -76,7 +77,11 @@ export function FileLibrary() {
     }
 
     setUploading(true);
-    const storagePath = buildStoragePath(user.id, kind, file.name);
+    // const storagePath = buildStoragePath(user.id, kind, file.name);
+    const storagePath =
+      kind === "edf"
+        ? buildRecordingPaths(user.id, crypto.randomUUID()).edf
+        : buildStoragePath(user.id, kind, file.name);
 
     try {
       const { error: uploadError } = await supabase.storage

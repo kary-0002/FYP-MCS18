@@ -9,6 +9,11 @@ from .auto_report import CreateReport
 
 REPORTING_DIR = Path(__file__).resolve().parent
 MODEL_DIR = REPORTING_DIR / "models"
+HAND_DOMINANCE = {
+    "L": "Left",
+    "R": "Right",
+    "U": "Unknown"
+}
 
 
 def calculate_relative_band_power(report):
@@ -279,6 +284,7 @@ def format_patient_information(metadata):
         lines.append(f"- Date of birth: {dob}.")
     dominance = patient.get("dominance")
     if dominance:
+        dominance = HAND_DOMINANCE.get(str(dominance).upper(), dominance)
         lines.append(f"- Hand dominance: {dominance}.")
     notes = patient.get("notes")
     if notes:

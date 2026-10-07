@@ -8,7 +8,11 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from dotenv import load_dotenv
+from pydantic import BaseModel
 from app.seizure_detection import detect_seizures
 from app.nicolet_metadata import extract_nicolet_metadata
 from app.report_generation.mcs18_pipeline import (
@@ -17,7 +21,9 @@ from app.report_generation.mcs18_pipeline import (
     extract_recording_metadata
 )
 
-
+load_dotenv()
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_HOST = urlparse(SUPABASE_URL).hostname if SUPABASE_URL else None
 app = FastAPI()
 
 # Setting up CORS middleware
@@ -66,6 +72,27 @@ def convert_nicolet_to_edf(source_path, work_dir):
         raise RuntimeError("Nicolet conversion did not produce exactly one EDF file.")
     return edf_files[0]
 
+class SavedRecordingRequest(BaseModel):
+    url: str
+    filename: str
+
+def download_saved_recording(url: str, destination: Path):
+    if not SUPABASE_HOST:
+        raise RuntimeError("SUPABASE_URL is not configured.")
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != SUPABASE_HOST
+        or "/storage/v1/object/sign/" not in parsed.path
+    ):
+        raise ValueError("Invalid Supabase Storage URL.")
+    request = Request(url, headers={"User-Agent": "MCS18-SeizureAI"})
+    try:
+        with urlopen(request, timeout=60) as response:
+            with destination.open("wb") as output:
+                shutil.copyfileobj(response, output, length=1024 * 1024)
+    except (HTTPError, URLError) as exc:
+        raise RuntimeError(f"Could not download saved EEG recording: {exc}") from exc
 
 # API ENDPOINTS
 @app.get("/")
@@ -131,6 +158,42 @@ async def post_upload_veeg(
             status_code=500,
             detail=str(exc)
         )
+
+
+@app.post("/open-saved-recording")
+def post_open_saved_recording(request: SavedRecordingRequest):
+    original_filename = Path(request.filename).name
+    if Path(original_filename).suffix.lower() != ".edf":
+        raise HTTPException(status_code=400, detail="Saved recording must be an EDF file.")
+    work_dir = tempfile.mkdtemp(prefix="eeg-analysis-")
+    eeg_path = Path(work_dir) / original_filename
+    try:
+        download_saved_recording(request.url, eeg_path)
+        recording_metadata = extract_recording_metadata(eeg_path)
+        session_id = str(uuid4())
+        ANALYSIS_SESSIONS[session_id] = {
+            "work_dir": work_dir,
+            "eeg_path": str(eeg_path),
+            "source_path": str(eeg_path),
+            "source_format": "edf",
+            "original_filename": original_filename,
+            "nicolet_metadata": None,
+            "report": None,
+            "recording_metadata": recording_metadata,
+            "background_analysis": None
+        }
+        return {
+            "session_id": session_id,
+            "source_format": "edf",
+            "edf_filename": original_filename,
+            "recording_metadata": recording_metadata
+        }
+    except ValueError as exc:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/edf/{session_id}")
@@ -224,13 +287,10 @@ async def post_generate_report(
             status_code=404,
             detail="Analysis session not found or expired."
         )
-    if (
-        session["report"] is None
-        or session["recording_metadata"] is None
-    ):
+    if session["recording_metadata"] is None:
         raise HTTPException(
             status_code=409,
-            detail="Background analysis has not completed."
+            detail="Recording metadata is unavailable."
         )
 
     try:
@@ -241,6 +301,15 @@ async def post_generate_report(
             status_code=400,
             detail="Invalid seizure or annotation JSON."
         )
+
+    if session["report"] is None:
+        analysis = prepare_analysis(
+            session["eeg_path"],
+            nicolet_metadata=session["nicolet_metadata"]
+        )
+        session["report"] = analysis["report"]
+        session["recording_metadata"] = analysis["recording_metadata"]
+        session["background_analysis"] = analysis["background_analysis"]
 
     try:
         result = generate_report_from_analysis(
@@ -255,15 +324,10 @@ async def post_generate_report(
         pdf_path = result["pdf_path"]
         original_filename = session["original_filename"]
 
-        def cleanup():
-            ANALYSIS_SESSIONS.pop(session_id, None)
-            shutil.rmtree(session["work_dir"], ignore_errors=True)
-
         return FileResponse(
             path=pdf_path,
             media_type="application/pdf",
-            filename=f"{Path(original_filename).stem}_report.pdf",
-            background=BackgroundTask(cleanup)
+            filename=f"{Path(original_filename).stem}_report.pdf"
         )
 
     except ValueError as exc:

@@ -21,6 +21,7 @@ const state = {
   reportGeneratedAt: null,
   reportOutOfDate: false,
   analysisSessionId: null,
+  analysisSourceUrl: null,
   editing: null,
   playing: null,
   readToken: 0,
@@ -54,6 +55,22 @@ async function createAnalysisSession(file) {
   return response.json();
 }
 
+async function createAnalysisSessionFromUrl(url, filename) {
+  const response = await fetch(
+    `${API_BASE_URL}/open-saved-recording`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, filename })
+    }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Could not open saved EEG recording for analysis.");
+  }
+  return response.json();
+}
+
 async function fetchSessionEDF(sessionId, filename) {
   const response = await fetch(`${API_BASE_URL}/edf/${sessionId}`);
   if (!response.ok) {
@@ -68,6 +85,22 @@ async function fetchSessionEDF(sessionId, filename) {
       lastModified: Date.now()
     }
   );
+}
+
+async function ensureAnalysisSession() {
+  if (state.analysisSessionId) return state.analysisSessionId;
+  let result;
+  if (state.analysisSourceUrl) {
+    result = await createAnalysisSessionFromUrl(
+      state.analysisSourceUrl,
+      state.sourceFileName || state.file?.name || "recording.edf"
+    );
+  } else {
+    result = await createAnalysisSession(state.file);
+  }
+  state.analysisSessionId = result.session_id;
+  state.recordingMetadata = result.recording_metadata ?? state.recordingMetadata;
+  return state.analysisSessionId;
 }
 
 function text(bytes) {
@@ -245,40 +278,50 @@ function markReportOutOfDate() {
 }
 function saveLocal() {
   if (!state.file || !state.edf) return;
-  localStorage.setItem(fingerprint(), JSON.stringify(buildRecordingState()));
+  const recordingState = buildRecordingState();
+  localStorage.setItem(fingerprint(), JSON.stringify(recordingState));
+  if (window.parent !== window) {
+    window.parent.postMessage(
+      {
+        type: "neuroscope:recording-state",
+        state: recordingState
+      },
+      window.location.origin
+    );
+  }
+}
+function restoreRecordingState(saved) {
+  state.annotations = saved?.annotations || [];
+  state.recordingMetadata = saved?.metadata || null;
+  state.seizureDetection = saved?.seizureDetection?.results ?? null;
+  state.seizureDetectionStatus = saved?.seizureDetection?.status ?? null;
+  state.seizureDetectionRunAt = saved?.seizureDetection?.runAt ?? null;
+  if (saved?.backgroundAnalysis) {
+    state.backgroundAnalysis = {
+      summary: saved.backgroundAnalysis.summary ?? null,
+      metrics: saved.backgroundAnalysis.metrics ?? null
+    };
+    state.backgroundAnalysisStatus = saved.backgroundAnalysis.status ?? null;
+    state.backgroundAnalysisRunAt = saved.backgroundAnalysis.runAt ?? null;
+  } else {
+    state.backgroundAnalysis = null;
+    state.backgroundAnalysisStatus = null;
+    state.backgroundAnalysisRunAt = null;
+  }
+  state.reportGeneratedAt = saved?.report?.generatedAt ?? null;
+  state.reportOutOfDate = saved?.report?.outOfDate ?? false;
 }
 function loadLocal() {
-  state.annotations = [];
-  state.seizureDetection = null;
-  state.seizureDetectionStatus = null;
-  state.seizureDetectionRunAt = null;
-  state.backgroundAnalysis = null;
-  state.backgroundAnalysisStatus = null;
-  state.backgroundAnalysisRunAt = null;
-  state.recordingMetadata = null;
-  state.reportGeneratedAt = null;
-  state.reportOutOfDate = false;
   const stored = localStorage.getItem(fingerprint());
-  if (!stored) return;
+  if (!stored) {
+    restoreRecordingState(null);
+    return;
+  }
   try {
-    const saved = JSON.parse(stored);
-    state.annotations = saved.annotations || [];
-    state.recordingMetadata = saved.metadata || null;
-    state.seizureDetection = saved.seizureDetection?.results ?? null;
-    state.seizureDetectionStatus = saved.seizureDetection?.status ?? null;
-    state.seizureDetectionRunAt = saved.seizureDetection?.runAt ?? null;
-    if (saved.backgroundAnalysis) {
-      state.backgroundAnalysis = {
-        summary: saved.backgroundAnalysis.summary ?? null,
-        metrics: saved.backgroundAnalysis.metrics ?? null
-      };
-      state.backgroundAnalysisStatus = saved.backgroundAnalysis.status ?? null;
-      state.backgroundAnalysisRunAt = saved.backgroundAnalysis.runAt ?? null;
-    }
-    state.reportGeneratedAt = saved.report?.generatedAt ?? null;
-    state.reportOutOfDate = saved.report?.outOfDate ?? false;
+    restoreRecordingState(JSON.parse(stored));
   } catch (err) {
     console.error("Could not restore recording state:", err);
+    restoreRecordingState(null);
   }
 }
 function toast(message) {
@@ -289,8 +332,85 @@ function toast(message) {
   t._timer = setTimeout(() => t.classList.remove("show"), 1800);
 }
 
-async function openFile(file) {
+async function runSeizureDetection() {
+  if (!state.file || state.seizureDetectionStatus === "running") return;
+  markReportOutOfDate();
+  state.seizureDetectionStatus = "running";
+  saveLocal();
+  renderDetectedSeizures();
   try {
+    await ensureAnalysisSession();
+    const response = await fetch(`${API_BASE_URL}/seizure-detection/${state.analysisSessionId}`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    const result = await response.json();
+    if (result.status !== "completed") throw new Error("Seizure detection failed.");
+    state.seizureDetection = result.seizure_detection;
+    state.seizureDetectionStatus = "completed";
+    state.seizureDetectionRunAt = new Date().toISOString();
+    // Successful rerun replaces all previous automated candidates.
+    syncAutomatedSeizureAnnotations();
+    saveLocal();
+    renderDetectedSeizures();
+    renderAnnotations();
+    draw();
+    toast("Seizure detection completed");
+  } catch (err) {
+    console.error("Seizure detection error:", err);
+    state.seizureDetection = null;
+    state.seizureDetectionStatus = "failed";
+    state.seizureDetectionRunAt = new Date().toISOString();
+    // A failed rerun must not leave old model candidates looking current.
+    state.annotations = state.annotations.filter((annotation) => annotation.origin !== "automated");
+    saveLocal();
+    renderDetectedSeizures();
+    renderAnnotations();
+    draw();
+    toast("Seizure detection failed");
+  }
+}
+
+async function runBackgroundAnalysis() {
+  if (!state.file || state.backgroundAnalysisStatus === "running") return;
+  markReportOutOfDate();
+  state.backgroundAnalysisStatus = "running";
+  saveLocal();
+  renderBackgroundAnalysisStatus();
+  const reportButton = $("#generateReport");
+  reportButton.disabled = true;
+  reportButton.textContent = "Analysing EEG...";
+  try {
+    await ensureAnalysisSession();
+    const response = await fetch(`${API_BASE_URL}/background-analysis/${state.analysisSessionId}`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    const result = await response.json();
+    if (result.status !== "completed") throw new Error(result.detail || "Background analysis failed.");
+    state.backgroundAnalysis = result.background_analysis;
+    state.backgroundAnalysisStatus = "completed";
+    state.backgroundAnalysisRunAt = new Date().toISOString();
+    state.recordingMetadata = result.recording_metadata ?? state.recordingMetadata;
+    saveLocal();
+    renderBackgroundAnalysisStatus();
+    reportButton.disabled = false;
+    reportButton.textContent = state.reportGeneratedAt && state.reportOutOfDate ? "Regenerate Report" : "Generate Report";
+    toast("Background analysis completed");
+  } catch (err) {
+    console.error("Background analysis error:", err);
+    state.backgroundAnalysis = null;
+    state.backgroundAnalysisStatus = "failed";
+    state.backgroundAnalysisRunAt = new Date().toISOString();
+    saveLocal();
+    renderBackgroundAnalysisStatus();
+    reportButton.disabled = true;
+    reportButton.textContent = "Background Analysis Failed";
+    toast("Background analysis failed");
+  }
+}
+
+async function openFile(file, restoredState = null, analysisSourceUrl = null) {
+  try {
+    const reportButton = $("#generateReport");
+    reportButton.disabled = true;
+    reportButton.textContent = "Loading EEG...";
     $("#emptyState").classList.add("hidden");
     $("#workspace").classList.remove("hidden");
     $("#loading").classList.remove("hidden");
@@ -301,6 +421,7 @@ async function openFile(file) {
     state.seizureDetection = null;
     state.seizureDetectionStatus = null;
     state.analysisSessionId = null;
+    state.analysisSourceUrl = analysisSourceUrl;
     state.recordingMetadata = null;
     let uploadResult = null;
     // Nicolet .e files must be converted before the viewer can parse them.
@@ -311,7 +432,6 @@ async function openFile(file) {
     }
     state.file = file;
     state.edf = await parseEDF(file);
-    const reportButton = $("#generateReport");
     reportButton.disabled = true;
     reportButton.textContent = "Analysing EEG...";
     state.start = 0;
@@ -322,7 +442,11 @@ async function openFile(file) {
     state.channels = usable
       .slice(0, Math.min(24, usable.length))
       .map((s) => s.index);
-    loadLocal();
+    if (restoredState) {
+      restoreRecordingState(restoredState);
+    } else {
+      loadLocal();
+    }
     ensureAutomatedSeizureAnnotations();
     if (uploadResult?.recording_metadata) {
       state.recordingMetadata = uploadResult.recording_metadata;
@@ -331,12 +455,18 @@ async function openFile(file) {
     const hasStoredSeizureState = state.seizureDetectionStatus === "completed" || state.seizureDetectionStatus === "failed";
     const hasStoredBackgroundState = state.backgroundAnalysisStatus === "completed" || state.backgroundAnalysisStatus === "failed";
     if (hasStoredBackgroundState) {
-      reportButton.disabled = true;
-      reportButton.textContent = state.backgroundAnalysisStatus === "completed" ? "Analysis Restored" : "Background Analysis Failed";
+      if (state.backgroundAnalysisStatus === "completed") {
+        reportButton.disabled = false;
+        reportButton.textContent = state.reportGeneratedAt ? "Regenerate Report" : "Generate Report";
+      } else {
+        reportButton.disabled = true;
+        reportButton.textContent = "Background Analysis Failed";
+      }
     }
     renderChannelList();
     renderAnnotations();
     renderDetectedSeizures();
+    renderBackgroundAnalysisStatus();
     const edfPatientId = getPatientId(state.edf.patient);
     const nicolet = state.recordingMetadata?.nicolet || {};
     const patient = nicolet.patient || {};
@@ -363,97 +493,10 @@ async function openFile(file) {
     const shouldRunSeizure = !hasStoredSeizureState;
     const shouldRunBackground = !hasStoredBackgroundState;
     try {
-      if (!shouldRunSeizure && !shouldRunBackground) return;
-      if (!state.analysisSessionId) {
-        uploadResult = await createAnalysisSession(uploadedFile);
-        state.analysisSessionId = uploadResult.session_id;
-        state.recordingMetadata = uploadResult.recording_metadata ?? state.recordingMetadata;
-        saveLocal();
-        renderAnnotations();
-        draw();
-      }
-      if (shouldRunSeizure) {
-        state.seizureDetectionStatus = "running";
-        renderDetectedSeizures();
-        // Run seizure detection first so its results can be shown immediately
-        try {
-          const detectionResponse = await fetch(
-            `${API_BASE_URL}/seizure-detection/${state.analysisSessionId}`,
-            { method: "POST" }
-          );
-          if (!detectionResponse.ok) {
-            throw new Error(await detectionResponse.text());
-          }
-          const detectionResult = await detectionResponse.json();
-          if (detectionResult.status === "completed") {
-            state.seizureDetection = detectionResult.seizure_detection;
-            state.seizureDetectionStatus = "completed";
-            state.seizureDetectionRunAt = new Date().toISOString();
-            syncAutomatedSeizureAnnotations();
-            saveLocal();
-            console.log("Seizure detection result:", state.seizureDetection);
-            renderDetectedSeizures();
-            renderAnnotations();
-            draw();
-          } else {
-            state.seizureDetection = null;
-            state.seizureDetectionStatus = "failed";
-            state.seizureDetectionRunAt = new Date().toISOString();
-            saveLocal();
-            renderDetectedSeizures();
-          }
-        } catch (err) {
-          console.error("Seizure detection error:", err);
-          state.seizureDetection = null;
-          state.seizureDetectionStatus = "failed";
-          state.seizureDetectionRunAt = new Date().toISOString();
-          saveLocal();
-          renderDetectedSeizures();
-        }
-      }
-      if (shouldRunBackground) {
-        state.backgroundAnalysisStatus = "running";
-        // Run Tung background analysis automatically after seizure detection
-        try {
-          const backgroundResponse = await fetch(
-            `${API_BASE_URL}/background-analysis/${state.analysisSessionId}`,
-            { method: "POST" }
-          );
-          if (!backgroundResponse.ok) {
-            throw new Error(await backgroundResponse.text());
-          }
-          const backgroundResult = await backgroundResponse.json();
-          if (backgroundResult.status === "completed") {
-            state.backgroundAnalysis = backgroundResult.background_analysis;
-            state.backgroundAnalysisStatus = "completed";
-            state.backgroundAnalysisRunAt = new Date().toISOString();
-            state.recordingMetadata = backgroundResult.recording_metadata ?? state.recordingMetadata;
-            saveLocal();
-            const reportButton = $("#generateReport");
-            reportButton.disabled = false;
-            reportButton.textContent = "Generate Report";
-          } else {
-            state.backgroundAnalysis = null;
-            state.backgroundAnalysisStatus = "failed";
-            state.backgroundAnalysisRunAt = new Date().toISOString();
-            saveLocal();
-            reportButton.disabled = true;
-            reportButton.textContent = "Background Analysis Failed";
-            console.error("Background analysis failed:", backgroundResult.detail);
-          }
-        } catch (err) {
-          state.backgroundAnalysis = null;
-          state.backgroundAnalysisStatus = "failed";
-          state.backgroundAnalysisRunAt = new Date().toISOString();
-          saveLocal();
-          reportButton.disabled = true;
-          reportButton.textContent = "Background Analysis Failed";
-          console.error("Background analysis error:", err);
-        }
-      }
-
+      if (shouldRunSeizure) await runSeizureDetection();
+      if (shouldRunBackground) await runBackgroundAnalysis();
     } catch (err) {
-      console.error("EEG upload error:", err);
+      console.error("EEG analysis error:", err);
     }
   } catch (err) {
     $("#emptyState").classList.remove("hidden");
@@ -694,40 +737,94 @@ function ensureAutomatedSeizureAnnotations() {
 }
 function renderDetectedSeizures() {
   let section = $("#detectedSeizures");
-
   if (!section) {
     section = document.createElement("div");
     section.id = "detectedSeizures";
-
     const annotationList = $("#annotationList");
     annotationList.parentElement.insertBefore(section, annotationList);
   }
-
-  if (state.seizureDetectionStatus === "running") {
+  const status = state.seizureDetectionStatus;
+  if (!status) {
+    section.innerHTML = "";
+    return;
+  }
+  if (status === "running") {
     section.innerHTML = `
-      <div style="margin-top: 12px; margin-bottom: 10px; font-size: 12px; color: #6d7c78;">
-        Automated seizure detection in progress...
+      <div class="analysis-status-row">
+        <span>Seizure detection in progress...</span>
       </div>
     `;
     return;
   }
-  if (state.seizureDetectionStatus === "failed") {
+  if (status === "failed") {
     section.innerHTML = `
-      <div style="margin-top: 12px; margin-bottom: 10px; font-size: 12px; color: #6d7c78;">
-        Automated seizure detection unavailable.
+      <div class="analysis-status-row">
+        <span>Seizure detection failed.</span>
+        <button id="retrySeizureDetection" class="analysis-action-button">
+          Retry
+        </button>
+      </div>
+    `;
+    $("#retrySeizureDetection").onclick = runSeizureDetection;
+    return;
+  }
+  section.innerHTML = `
+    <div class="analysis-status-row">
+      <span>Seizure detection completed.</span>
+      <button id="rerunSeizureDetection" class="analysis-action-button">
+        Re-run
+      </button>
+    </div>
+  `;
+  $("#rerunSeizureDetection").onclick = runSeizureDetection;
+}
+function renderBackgroundAnalysisStatus() {
+  let section = $("#backgroundAnalysisStatus");
+  if (!section) {
+    section = document.createElement("div");
+    section.id = "backgroundAnalysisStatus";
+    const detectedSeizures = $("#detectedSeizures");
+    const annotationList = $("#annotationList");
+    if (detectedSeizures) {
+      detectedSeizures.parentElement.insertBefore(section, detectedSeizures);
+    } else {
+      annotationList.parentElement.insertBefore(section, annotationList);
+    }
+  }
+  const status = state.backgroundAnalysisStatus;
+  if (!status) {
+    section.innerHTML = "";
+    return;
+  }
+  if (status === "running") {
+    section.innerHTML = `
+      <div class="analysis-status-row">
+        <span>Background analysis in progress...</span>
       </div>
     `;
     return;
   }
-  if (state.seizureDetectionStatus === "completed" && !(state.seizureDetection?.seizures || []).length) {
+  if (status === "failed") {
     section.innerHTML = `
-      <div style="margin-top: 12px; margin-bottom: 10px; font-size: 12px; color: #6d7c78;">
-        No automated seizure candidates detected.
+      <div class="analysis-status-row">
+        <span>Background analysis failed.</span>
+        <button id="retryBackgroundAnalysis" class="analysis-action-button">
+          Retry
+        </button>
       </div>
     `;
+    $("#retryBackgroundAnalysis").onclick = runBackgroundAnalysis;
     return;
   }
-  section.innerHTML = "";
+  section.innerHTML = `
+    <div class="analysis-status-row">
+      <span>Background analysis completed.</span>
+      <button id="rerunBackgroundAnalysis" class="analysis-action-button">
+        Re-run
+      </button>
+    </div>
+  `;
+  $("#rerunBackgroundAnalysis").onclick = runBackgroundAnalysis;
 }
 function renderAnnotations() {
   const box = $("#annotationList");
@@ -981,7 +1078,7 @@ $("#exportButton").onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 $("#generateReport").onclick = async () => {
-  if (!state.file || !state.analysisSessionId) return;
+  if (!state.file) return;
   const button = $("#generateReport");
   const originalText = button.textContent;
   button.disabled = true;
@@ -1008,6 +1105,7 @@ $("#generateReport").onclick = async () => {
   formData.append("annotation_results_json", JSON.stringify(annotationResults));
   formData.append("seizure_detection_status", state.seizureDetectionStatus);
   try {
+    await ensureAnalysisSession();
     const response = await fetch(`${API_BASE_URL}/report`, {
       method: "POST",
       body: formData,
@@ -1120,6 +1218,9 @@ window.addEventListener("message", async (event) => {
     $("#emptyState").classList.add("hidden");
     $("#workspace").classList.remove("hidden");
     $("#loading").classList.remove("hidden");
+    const reportButton = $("#generateReport");
+    reportButton.disabled = true;
+    reportButton.textContent = "Loading EEG...";
     const response = await fetch(event.data.url);
     if (!response.ok)
       throw new Error("The saved EDF file could not be downloaded.");
@@ -1128,7 +1229,7 @@ window.addEventListener("message", async (event) => {
       type: "application/octet-stream",
       lastModified: Date.now(),
     });
-    await openFile(file);
+    await openFile(file, event.data.recordingState ?? null, event.data.url ?? null);
   } catch (err) {
     $("#emptyState").classList.remove("hidden");
     $("#workspace").classList.add("hidden");
