@@ -1099,13 +1099,13 @@ $("#generateReport").onclick = async () => {
       (annotation) => annotation.origin !== "automated"
     )
   };
-  const formData = new FormData();
-  formData.append("session_id", state.analysisSessionId);
-  formData.append("seizure_results_json", JSON.stringify(buildReportSeizureDetection()));
-  formData.append("annotation_results_json", JSON.stringify(annotationResults));
-  formData.append("seizure_detection_status", state.seizureDetectionStatus);
   try {
     await ensureAnalysisSession();
+    const formData = new FormData();
+    formData.append("session_id", state.analysisSessionId);
+    formData.append("seizure_results_json", JSON.stringify(buildReportSeizureDetection()));
+    formData.append("annotation_results_json", JSON.stringify(annotationResults));
+    formData.append("seizure_detection_status", state.seizureDetectionStatus);
     const response = await fetch(`${API_BASE_URL}/report`, {
       method: "POST",
       body: formData,
@@ -1144,7 +1144,7 @@ $("#generateReport").onclick = async () => {
     alert(err.message || "Could not generate report.");
   } finally {
     button.disabled = false;
-    button.textContent = originalText;
+    button.textContent = state.reportGeneratedAt ? "Regenerate Report" : "Generate Report";
   }
 };
 $("#importButton").onclick = () => $("#annotationInput").click();

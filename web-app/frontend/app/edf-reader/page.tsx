@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { buildStoragePath, FILE_BUCKET, getRecordingPathsFromEdfPath } from "@/lib/files";
+import { FILE_BUCKET, getRecordingPathsFromEdfPath } from "@/lib/files";
 
 function EDFReaderContent() {
   const searchParams = useSearchParams();
@@ -17,13 +17,15 @@ function EDFReaderContent() {
     name: string;
     recordingState: unknown | null;
     statePath: string | null;
+    reportPath: string | null;
   } | null>(null);
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<{ blob: Blob; name: string; } | null>(null);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportStatus, setReportStatus] = useState<string | null>(null);
-  const [savingReport, setSavingReport] = useState(false);
+  const [reportOutOfDate, setReportOutOfDate] = useState(false);
+  const scrollToReportRef = useRef(false);
 
   useEffect(() => {
     if (!report) {
@@ -36,11 +38,16 @@ function EDFReaderContent() {
   }, [report]);
 
   useEffect(() => {
-    if (!reportUrl) return;
+    if (!reportUrl || !scrollToReportRef.current) return;
+    scrollToReportRef.current = false;
     reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [reportUrl]);
 
   useEffect(() => {
+    setReport(null);
+    setReportOutOfDate(false);
+    setReportStatus(null);
+
     if (!fileId) {
       setSavedFile(null);
       setError(null);
@@ -70,7 +77,8 @@ function EDFReaderContent() {
         }
 
         const paths = getRecordingPathsFromEdfPath(row.storage_path);
-        let recordingState: unknown | null = null;
+        let recordingState: Record<string, any> | null = null;
+        let restoredReport: Blob | null = null;
         if (paths) {
           const { data: stateBlob, error: stateError } = await supabase.storage
             .from(FILE_BUCKET)
@@ -84,13 +92,27 @@ function EDFReaderContent() {
           } else if (stateError && !stateError.message.toLowerCase().includes("not found")) {
             console.warn("Could not load recording state:", stateError.message);
           }
+          const { data: reportBlob, error: reportError } = await supabase.storage.from(FILE_BUCKET).download(paths.report);
+          if (reportBlob) {
+            restoredReport = reportBlob;
+          } else if (reportError && !reportError.message.toLowerCase().includes("not found")) {
+            console.warn("Could not load latest report:", reportError.message);
+          }
         }
         if (!cancelled) {
+          setReportOutOfDate(recordingState?.report?.outOfDate ?? false);
+          if (restoredReport) {
+            setReport({
+              blob: restoredReport,
+              name: `${row.original_name.replace(/\.edf$/i, "")}_report.pdf`
+            });
+          }
           setSavedFile({
             url: data.signedUrl,
             name: row.original_name,
             recordingState,
-            statePath: paths?.state ?? null
+            statePath: paths?.state ?? null,
+            reportPath: paths?.report ?? null
           });
         }
       } catch (err) {
@@ -140,6 +162,21 @@ function EDFReaderContent() {
     [savedFile?.statePath]
   );
 
+  const saveLatestReport = useCallback(
+    async (blob: Blob) => {
+      if (!savedFile?.reportPath) return;
+      const supabase = createClient();
+      const { error } = await supabase.storage
+        .from(FILE_BUCKET)
+        .upload(savedFile.reportPath, blob, {
+          contentType: "application/pdf",
+          upsert: true
+        });
+      if (error) throw error;
+    },
+    [savedFile?.reportPath]
+  );
+
   const syncTheme = useCallback(() => {
     frameRef.current?.contentWindow?.postMessage(
       { type: "seizureai:theme", dark: document.documentElement.classList.contains("dark") },
@@ -165,12 +202,21 @@ function EDFReaderContent() {
         return;
       }
       if (event.data?.type === "neuroscope:recording-state" && event.data?.state) {
+        setReportOutOfDate(event.data.state?.report?.outOfDate ?? false);
         saveRecordingState(event.data.state);
         return;
       }
       if (event.data?.type === "seizureai:report-generated" && event.data?.blob) {
-        setReport({ blob: event.data.blob as Blob, name: event.data.name || "eeg_report.pdf" });
+        const blob = event.data.blob as Blob;
+        scrollToReportRef.current = true;
+        setReport({ blob, name: event.data.name || "eeg_report.pdf" });
+        setReportOutOfDate(false);
         setReportStatus(null);
+        void saveLatestReport(blob).catch((err) => {
+          console.error("Could not persist latest report:", err);
+          setReportStatus(err instanceof Error ? err.message : "Could not save the report with this recording.");
+        });
+        return;
       }
     };
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
@@ -179,7 +225,7 @@ function EDFReaderContent() {
       observer.disconnect();
       window.removeEventListener("message", handleViewerMessage);
     };
-  }, [syncTheme, saveRecordingState]);
+  }, [syncTheme, saveRecordingState, saveLatestReport]);
 
   function downloadReport() {
     if (!reportUrl || !report) return;
@@ -189,40 +235,6 @@ function EDFReaderContent() {
     document.body.appendChild(link);
     link.click();
     link.remove();
-  }
-
-  async function saveReport() {
-    if (!report) return;
-    setReportStatus(null);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setReportStatus("Sign in to save this report to My Files.");
-      return;
-    }
-    setSavingReport(true);
-    const storagePath = buildStoragePath(user.id, "pdf", report.name);
-    try {
-      const { error: uploadError } = await supabase.storage
-        .from(FILE_BUCKET)
-        .upload(storagePath, report.blob, { contentType: "application/pdf", upsert: false });
-      if (uploadError) throw uploadError;
-      const { error: insertError } = await supabase
-        .from("user_files")
-        .insert({
-          user_id: user.id,
-          kind: "pdf",
-          original_name: report.name,
-          storage_path: storagePath,
-          size_bytes: report.blob.size,
-        });
-      if (insertError) throw insertError;
-      setReportStatus("Saved to My Files.");
-    } catch (err) {
-      setReportStatus(err instanceof Error ? err.message : "Could not save this report.");
-    } finally {
-      setSavingReport(false);
-    }
   }
 
   return (
@@ -246,16 +258,16 @@ function EDFReaderContent() {
           <section ref={reportRef} className="mt-6 scroll-mt-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="section-kicker">Generated report</div>
+                <div className="section-kicker">Latest report</div>
                 <h2 className="text-xl font-semibold">{report.name}</h2>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={downloadReport}>Download PDF</Button>
-                <Button onClick={() => void saveReport()} disabled={savingReport}>
-                  {savingReport ? "Saving..." : "Save to My Files"}
-                </Button>
-              </div>
+              <Button variant="outline" onClick={downloadReport}>Download PDF</Button>
             </div>
+            {reportOutOfDate && (
+              <div className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                This report is out of date. Regenerate it to include the latest analysis results and annotations.
+              </div>
+            )}
             {reportStatus && (
               <p className="text-sm text-muted-foreground">
                 {reportStatus}
