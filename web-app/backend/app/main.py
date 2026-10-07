@@ -5,7 +5,7 @@ import json
 import subprocess
 from uuid import uuid4
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from urllib.parse import urlparse
@@ -42,6 +42,7 @@ app.add_middleware(
 )
 
 ANALYSIS_SESSIONS = {}
+SOURCE_JOBS = {}
 MODEL_PATH = os.getenv(
     "SEIZURE_MODEL_PATH",
     "app/official_seizure_transformer_model.pth"
@@ -93,6 +94,49 @@ def download_saved_recording(url: str, destination: Path):
                 shutil.copyfileobj(response, output, length=1024 * 1024)
     except (HTTPError, URLError) as exc:
         raise RuntimeError(f"Could not download saved EEG recording: {exc}") from exc
+
+def process_saved_source(job_id: str, url: str, filename: str):
+    original_filename = Path(filename).name
+    work_dir = None
+    try:
+        SOURCE_JOBS[job_id] = {
+            "status": "running",
+            "detail": None
+        }
+        work_dir = tempfile.mkdtemp(prefix="eeg-analysis-")
+        source_path = Path(work_dir) / original_filename
+        download_saved_recording(url, source_path)
+        nicolet_metadata = extract_nicolet_metadata(source_path)
+        eeg_path = convert_nicolet_to_edf(source_path, work_dir)
+        recording_metadata = extract_recording_metadata(eeg_path)
+        recording_metadata["nicolet"] = nicolet_metadata
+        session_id = str(uuid4())
+        ANALYSIS_SESSIONS[session_id] = {
+            "work_dir": work_dir,
+            "eeg_path": str(eeg_path),
+            "source_path": str(source_path),
+            "source_format": "nicolet",
+            "original_filename": original_filename,
+            "nicolet_metadata": nicolet_metadata,
+            "report": None,
+            "recording_metadata": recording_metadata,
+            "background_analysis": None
+        }
+        SOURCE_JOBS[job_id] = {
+            "status": "completed",
+            "session_id": session_id,
+            "source_format": "nicolet",
+            "edf_filename": Path(eeg_path).name,
+            "recording_metadata": recording_metadata,
+            "detail": None
+        }
+    except Exception as exc:
+        if work_dir is not None:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        SOURCE_JOBS[job_id] = {
+            "status": "failed",
+            "detail": str(exc)
+        }
 
 # API ENDPOINTS
 @app.get("/")
@@ -194,6 +238,39 @@ def post_open_saved_recording(request: SavedRecordingRequest):
     except Exception as exc:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/open-saved-source")
+def post_open_saved_source(request: SavedRecordingRequest, background_tasks: BackgroundTasks):
+    original_filename = Path(request.filename).name
+    if Path(original_filename).suffix.lower() != ".e":
+        raise HTTPException(status_code=400, detail="Saved source must be a Nicolet .e file.")
+    job_id = str(uuid4())
+    SOURCE_JOBS[job_id] = {
+        "status": "queued",
+        "detail": None
+    }
+    background_tasks.add_task(
+        process_saved_source,
+        job_id,
+        request.url,
+        original_filename
+    )
+    return {
+        "job_id": job_id,
+        "status": "queued"
+    }
+
+
+@app.get("/source-job/{job_id}")
+def get_source_job(job_id: str):
+    job = SOURCE_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Nicolet conversion job not found.")
+    return {
+        "job_id": job_id,
+        **job
+    }
 
 
 @app.get("/edf/{session_id}")

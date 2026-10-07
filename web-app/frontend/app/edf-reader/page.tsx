@@ -5,7 +5,64 @@ import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { FILE_BUCKET, getRecordingPathsFromEdfPath } from "@/lib/files";
+import { FILE_BUCKET, getRecordingPathsFromEdfPath,buildRecordingPaths, MAX_NICOLET_SOURCE_BYTES } from "@/lib/files";
+import * as tus from "tus-js-client";
+
+function getApiBaseUrl() {
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  ) {
+    return "http://127.0.0.1:8000";
+  }
+  return "https://fyp-api.azutoro.com";
+}
+
+async function uploadTemporaryNicoletSource(file: File, storagePath: string, accessToken: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
+  const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
+  const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+  await new Promise<void>((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      headers: { authorization: `Bearer ${accessToken}` },
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      metadata: {
+        bucketName: FILE_BUCKET,
+        objectName: storagePath,
+        contentType: "application/octet-stream",
+        cacheControl: "3600"
+      },
+      chunkSize: 6 * 1024 * 1024,
+      onError(error) {
+        reject(error);
+      },
+      onSuccess() {
+        resolve();
+      }
+    });
+    upload.start();
+  });
+}
+
+async function waitForNicoletSourceJob(jobId: string) {
+  for (let attempt = 0; attempt < 1800; attempt += 1) {
+    const response = await fetch(`${getApiBaseUrl()}/source-job/${encodeURIComponent(jobId)}`);
+    if (!response.ok) {
+      throw new Error((await response.text()) || "Could not check Nicolet conversion status.");
+    }
+    const result = await response.json();
+    if (result.status === "completed") return result;
+    if (result.status === "failed") {
+      throw new Error(result.detail || "Nicolet conversion failed.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error("Nicolet conversion timed out.");
+}
 
 function EDFReaderContent() {
   const searchParams = useSearchParams();
@@ -195,8 +252,84 @@ function EDFReaderContent() {
 
   useEffect(() => {
     const observer = new MutationObserver(syncTheme);
-    const handleViewerMessage = (event: MessageEvent) => {
+    const handleViewerMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "neuroscope:prepare-nicolet" && event.data?.file) {
+        const requestId = event.data.requestId;
+        const file = event.data.file as File;
+        let sourcePath: string | null = null;
+        try {
+          if (!file.name.toLowerCase().endsWith(".e")) {
+            throw new Error("Expected a Nicolet .e recording.");
+          }
+          if (file.size > MAX_NICOLET_SOURCE_BYTES) {
+            throw new Error("Nicolet .e file is larger than the 5 GB limit.");
+          }
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          if (!user || sessionError || !session?.access_token) {
+            throw new Error("Sign in before opening a large Nicolet recording.");
+          }
+          const paths = buildRecordingPaths(user.id, crypto.randomUUID());
+          sourcePath = paths.source;
+          await uploadTemporaryNicoletSource(file, paths.source, session.access_token);
+          const { data: signedSource, error: signedError } = await supabase.storage
+            .from(FILE_BUCKET)
+            .createSignedUrl(paths.source, 3600);
+          if (signedError || !signedSource?.signedUrl) {
+            throw signedError ?? new Error("Could not open uploaded Nicolet source.");
+          }
+          const startResponse = await fetch(
+            `${getApiBaseUrl()}/open-saved-source`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: signedSource.signedUrl, filename: file.name })
+            }
+          );
+          if (!startResponse.ok) {
+            throw new Error((await startResponse.text()) || "Could not start Nicolet conversion.");
+          }
+          const startedJob = await startResponse.json();
+          if (!startedJob.job_id) {
+            throw new Error("Backend did not return a Nicolet conversion job.");
+          }
+          const result = await waitForNicoletSourceJob(startedJob.job_id);
+          const { error: cleanupError } = await supabase.storage
+            .from(FILE_BUCKET)
+            .remove([paths.source]);
+          if (cleanupError) {
+            console.warn("Could not remove temporary Nicolet source:", cleanupError.message);
+          }
+          sourcePath = null;
+          frameRef.current?.contentWindow?.postMessage(
+            {
+              type: "neuroscope:nicolet-ready",
+              requestId,
+              result
+            },
+            window.location.origin
+          );
+        } catch (err) {
+          if (sourcePath) {
+            const supabase = createClient();
+            await supabase.storage
+              .from(FILE_BUCKET)
+              .remove([sourcePath])
+              .catch(() => {});
+          }
+          frameRef.current?.contentWindow?.postMessage(
+            {
+              type: "neuroscope:nicolet-ready",
+              requestId,
+              error: err instanceof Error ? err.message : "Could not prepare Nicolet recording."
+            },
+            window.location.origin
+          );
+        }
+        return;
+      }
       if (event.data?.type === "seizureai:viewer-ready") {
         syncTheme();
         return;

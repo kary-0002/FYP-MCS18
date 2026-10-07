@@ -55,6 +55,32 @@ async function createAnalysisSession(file) {
   return response.json();
 }
 
+async function createNicoletAnalysisSession(file) {
+  if (window.parent === window) return createAnalysisSession(file);
+  return new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const handler = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "neuroscope:nicolet-ready" || event.data?.requestId !== requestId) return;
+      window.removeEventListener("message", handler);
+      if (event.data.error) {
+        reject(new Error(event.data.error));
+        return;
+      }
+      resolve(event.data.result);
+    };
+    window.addEventListener("message", handler);
+    window.parent.postMessage(
+      {
+        type: "neuroscope:prepare-nicolet",
+        requestId,
+        file
+      },
+      window.location.origin
+    );
+  });
+}
+
 async function createAnalysisSessionFromUrl(url, filename) {
   const response = await fetch(
     `${API_BASE_URL}/open-saved-recording`,
@@ -426,7 +452,7 @@ async function openFile(file, restoredState = null, analysisSourceUrl = null) {
     let uploadResult = null;
     // Nicolet .e files must be converted before the viewer can parse them.
     if (isNicolet) {
-      uploadResult = await createAnalysisSession(uploadedFile);
+      uploadResult = await createNicoletAnalysisSession(uploadedFile);
       state.analysisSessionId = uploadResult.session_id;
       file = await fetchSessionEDF(state.analysisSessionId, uploadResult.edf_filename);
     }

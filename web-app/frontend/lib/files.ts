@@ -1,5 +1,7 @@
 export const FILE_BUCKET = "user-files";
 export const MAX_FILE_BYTES = 500 * 1024 * 1024;
+export const MAX_NICOLET_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
+export const RECORDING_SOURCE_NAME = "source.e";
 export const RECORDING_EDF_NAME = "recording.edf";
 export const RECORDING_STATE_NAME = "recording_state.json";
 export const LATEST_REPORT_NAME = "latest_report.pdf";
@@ -11,6 +13,10 @@ export function classifyFile(file: File): FileKind | null {
   if (name.endsWith(".edf")) return "edf";
   if (name.endsWith(".pdf")) return "pdf";
   return null;
+}
+
+export function isNicoletSourceFile(file: File) {
+  return file.name.toLowerCase().endsWith(".e");
 }
 
 export function storageFolder(kind: FileKind) {
@@ -30,6 +36,7 @@ export function buildRecordingPaths(userId: string, recordingKey: string) {
   const folder = `${userId}/recordings/${recordingKey}`;
   return {
     folder,
+    source: `${folder}/${RECORDING_SOURCE_NAME}`,
     edf: `${folder}/${RECORDING_EDF_NAME}`,
     state: `${folder}/${RECORDING_STATE_NAME}`,
     report: `${folder}/${LATEST_REPORT_NAME}`
@@ -43,6 +50,7 @@ export function getRecordingPathsFromEdfPath(edfPath: string) {
   const folder = edfPath.slice(0, slash);
   return {
     folder,
+    source: `${folder}/${RECORDING_SOURCE_NAME}`,
     edf: `${folder}/${RECORDING_EDF_NAME}`,
     state: `${folder}/${RECORDING_STATE_NAME}`,
     report: `${folder}/${LATEST_REPORT_NAME}`

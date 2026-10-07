@@ -9,8 +9,9 @@ export default function FilesPage() {
         <div className="mx-auto mb-8 max-w-3xl">
           <div className="section-kicker">Private library</div><h1 className="text-3xl font-bold tracking-tight">My files</h1>
           <p className="mt-2 text-muted-foreground">
-            Store EEG recordings (.edf) and annotation or analysis reports
-            (.pdf). Files are private to your account.
+            Store EEG recordings imported from EDF or Nicolet (.e) files.
+            <br />
+            Generated reports are stored with their recording. Files are private to your account.
           </p>
         </div>
         <FileLibrary />
