@@ -75,7 +75,7 @@ class eegProcess:
                  epoch_length=4,  removeEpochsRationThreshold=0.3, 
                  dropEpochSD=2.2, tmax=None, tmin=None,
                  renameChannels=True,
-                 unit_uV=True):
+                 unit_uV=True, progress_callback=None):
         self.unit_uV = unit_uV
         self.eegFile = eegFile
         self.isFifFile = '.fif' in eegFile
@@ -89,6 +89,7 @@ class eegProcess:
         self.tmax = tmax
         self.tmin = tmin
         self.renameChannels = renameChannels
+        self.progress_callback = progress_callback
         print ('eegFullName: ', self.eegFullName)
 
     def getRawData(self):
@@ -272,6 +273,8 @@ class eegProcess:
             psdsSum= simpson(epoch_psds, dx=bandWidth)
             return psdsSum
         print ('All epochs_num: ', epochs_num)
+        if self.progress_callback:
+            self.progress_callback(None, f"Computed spectra for {epochs_num} EEG epochs; measuring features")
 
         # 計算各頻帶不同分布的總和
         sumArray=[[], [], [], [], []]
@@ -282,6 +285,9 @@ class eegProcess:
             for j in range(len(sumArray)):
                 sumArray[j].append(calcPowerSum(psds[i], bandRange[j][0], bandRange[j][1], ch_names[j], bandWidth))
             psds_alpha_ant_post_ratio.append(np.mean(sumArray[0][i])/np.mean(sumArray[1][i]))
+            if self.progress_callback and (i == epochs_num - 1 or (i + 1) % max(1, epochs_num // 100) == 0):
+                percent = int(50 * (i + 1) / max(1, epochs_num))
+                self.progress_callback(percent, f"Measured features for EEG epoch {i + 1} of {epochs_num}")
 
 
         for i in range(len(sumArray)):
@@ -376,7 +382,16 @@ class eegProcess:
             eegData=epochs_repair.get_data(copy=True, units='uV')
             eegData = eegData.transpose(1,2,0)
             features=np.array(repair.getFeatures(eegData, self.sampling_rate))        
-            epochs_repair, repair_ratio, badChnNum=repair.findArtifacts(epochs, features)
+            if self.progress_callback:
+                self.progress_callback(50, "Starting artifact repair across EEG epochs")
+
+            def report_repair_progress(percent, message):
+                if self.progress_callback:
+                    self.progress_callback(50 + int(0.45 * percent), message)
+
+            epochs_repair, repair_ratio, badChnNum=repair.findArtifacts(
+                epochs, features, progress_callback=report_repair_progress
+            )
             # print ('bad_ratio: ', repair_ratio)
 
             bad_channels=[ch_name for ch_name in repair_ratio if repair_ratio[ch_name]>=self.removeEpochsRationThreshold]
@@ -384,5 +399,10 @@ class eegProcess:
         else:
             epochs_repair=epochs
             bad_channels=[]
+            if self.progress_callback:
+                self.progress_callback(95, "Artifact repair skipped")
+
+        if self.progress_callback:
+            self.progress_callback(95, "EEG artifact processing complete; finalizing features")
 
         return epochs_repair, badRatio, bad_channels

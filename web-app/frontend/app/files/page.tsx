@@ -6,7 +6,7 @@ export default function FilesPage() {
     <div className="app-layout min-h-screen bg-background">
       <Header />
       <main className="px-4 pb-12">
-        <div className="mx-auto mb-8 max-w-3xl">
+        <div className="mx-auto mb-8 max-w-6xl">
           <div className="section-kicker">Private library</div><h1 className="text-3xl font-bold tracking-tight">My Files</h1>
           <p className="mt-2 text-muted-foreground">
             Store EEG recordings imported from EDF or Nicolet (.e) files.

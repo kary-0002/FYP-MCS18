@@ -536,7 +536,7 @@ def build_report_text(combined, ai_report_text=None, seizure_detection_status="c
     return "\n\n".join(sections)
 
 
-def prepare_analysis(eeg_path, nicolet_metadata=None):
+def prepare_analysis(eeg_path, nicolet_metadata=None, progress_callback=None):
     eeg_path = Path(eeg_path)
     recording_metadata = extract_recording_metadata(eeg_path)
     if nicolet_metadata is not None:
@@ -545,6 +545,7 @@ def prepare_analysis(eeg_path, nicolet_metadata=None):
         eeg_path.name,
         str(eeg_path.parent),
         model_folder=str(MODEL_DIR),
+        progress_callback=progress_callback,
     )
     return {
         "report": report,
@@ -561,8 +562,14 @@ def generate_report_from_analysis(
     annotation_results=None,
     seizure_detection_status="completed",
     report_lang="English",
-    output_root="pdf"
+    output_root="pdf",
+    progress_callback=None
 ):
+    def report_progress(percent, message):
+        if progress_callback:
+            progress_callback(percent, message)
+
+    report_progress(5, "Combining EEG findings, detections, and annotations")
     eeg_path = Path(eeg_path)
     background_results = {
         "recording_id": eeg_path.stem,
@@ -583,23 +590,29 @@ def generate_report_from_analysis(
 
     ai_report_text = ""
     if api_key:
+        report_progress(20, "Drafting report text with the configured AI service")
         ai_report_text = report.AI_Text_generate(
             reportLang=report_lang,
             seizure_detection=combined.get("seizure_detection"),
             annotations=combined.get("annotations")
         )
+    else:
+        report_progress(20, "Preparing report text from EEG findings")
 
+    report_progress(55, "Building report sections and clinical summary")
     report_text = build_report_text(
         combined,
         ai_report_text,
         seizure_detection_status
     )
     output_folder = Path(output_root) / eeg_path.stem
+    report_progress(70, "Creating PDF pages and EEG figures")
     artifacts = report.generate_pdf(
         ai_report_text=report_text,
         report_data=combined,
         dest_pdfPath=str(output_folder)
     )
+    report_progress(95, "Finalizing generated PDF")
 
     return {
         "recording_id": eeg_path.stem,

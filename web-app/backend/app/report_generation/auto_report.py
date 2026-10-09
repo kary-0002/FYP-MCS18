@@ -75,7 +75,8 @@ class CreateReport:
                  model_folder='./models/',
                  model_names=['CNN', 'GoogleNet','ResNet'], useRepair=True, unit_uV=True,
                  removeEpochsRationThreshold=0.3, dropEpochSD=2.2,
-                 tmax=None, tmin=None, renameChannels=True 
+                 tmax=None, tmin=None, renameChannels=True,
+                 progress_callback=None
                 ): 
         self.benchmark = {
             'DBS': 0, # DBS
@@ -106,6 +107,7 @@ class CreateReport:
         self.tmax=tmax
         self.tmin=tmin
         self.renameChannels=renameChannels
+        self.progress_callback=progress_callback
         
         if os.path.isfile(self.eegFullName):            
             print ('File exists: ', self.eegFullName)
@@ -306,13 +308,21 @@ class CreateReport:
         return followOrder
 
     def process(self):
+        def report_progress(percent, message):
+            if self.progress_callback:
+                self.progress_callback(percent, message)
+
+        report_progress(None, "Loading EDF data and preparing EEG channels")
         eegWork=eegProcess(self.fileName, self.filePath, useRepair=self.useRepair, 
                            dropEpochSD=self.dropEpochSD, unit_uV=self.unit_uV, 
-                           tmax=self.tmax, tmin=self.tmin, renameChannels=self.renameChannels)
+                           tmax=self.tmax, tmin=self.tmin, renameChannels=self.renameChannels,
+                           progress_callback=report_progress)
         raw, events=eegWork.getRawData()
+        report_progress(None, "EDF loaded; segmenting signal and calculating spectra")
         sample_rate=int(raw.info['sfreq'])
         self.sample_rate=sample_rate
         epochs,bad_ratio, bad_channels=eegWork.extractAlphaEpochs()
+        report_progress(None, "Summarizing EEG features and signal quality")
         results, psds=self.getFeatures(epochs)
         self.alphaEpochs=epochs
         self.psds = psds
@@ -323,6 +333,7 @@ class CreateReport:
         results['amplitudes']=amplitude
         self.results=results
         self.genFinalResults()
+        report_progress(100, "Background analysis complete")
 
         if self.outputPdf:  
             ai_report_text=None
