@@ -28,6 +28,11 @@ const state = {
   editing: null,
   playing: null,
   readToken: 0,
+  analysisLog: [],
+  analysisTaskActive: false,
+  analysisPercent: null,
+  analysisTaskName: null,
+  analysisMessage: null,
 };
 const colors = {
   Seizure: "#d75a54",
@@ -340,20 +345,94 @@ function toast(message) {
   t._timer = setTimeout(() => t.classList.remove("show"), 1800);
 }
 
+function logAnalysis(message, status = "info") {
+  state.analysisLog.push({ message, status, time: new Date() });
+  state.analysisLog = state.analysisLog.slice(-8);
+  renderAnalysisConsole();
+}
+
+function renderAnalysisConsole() {
+  let panel = $("#analysisConsole");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "analysisConsole";
+    panel.className = "analysis-console";
+    panel.setAttribute("aria-live", "polite");
+    const actions = $(".annotation-file-actions");
+    actions.parentElement.insertBefore(panel, actions.nextSibling);
+  }
+  const active = state.analysisTaskActive || [state.seizureDetectionStatus, state.backgroundAnalysisStatus].includes("running");
+  const progressMarkup = active
+    ? `<div class="analysis-progress ${state.analysisPercent == null ? "indeterminate" : "determinate"}"><i style="width:${state.analysisPercent == null ? 35 : state.analysisPercent}%"></i></div><div class="analysis-progress-label">${state.analysisPercent == null ? escapeHtml(state.analysisMessage || "Working…") : `${Math.round(state.analysisPercent)}% ${state.analysisTaskName === "background" ? "EEG analysis" : "report generation"} · ${escapeHtml(state.analysisMessage || "In progress")}`}</div>`
+    : "";
+  panel.innerHTML = `
+    <div class="analysis-console-heading"><strong>Analysis activity</strong><span>${active ? "IN PROGRESS" : "ACTIVITY LOG"}</span></div>
+    ${progressMarkup}
+    <ol>${state.analysisLog.map(({ message, status, time }) => `
+      <li class="${status}"><time>${time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>${escapeHtml(message)}</span></li>
+    `).join("")}</ol>
+  `;
+}
+
+function startProgressPolling(task) {
+  state.analysisTaskActive = true;
+  state.analysisPercent = null;
+  state.analysisTaskName = task;
+  state.analysisMessage = "Starting";
+  renderAnalysisConsole();
+  let lastEventId = 0;
+  let stopped = false;
+  const poll = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/analysis-progress/${state.analysisSessionId}/${task}`);
+      if (!response.ok) return;
+      const progress = await response.json();
+      if (stopped) return;
+      state.analysisPercent = progress.percent;
+      state.analysisMessage = progress.message;
+      for (const event of progress.events || []) {
+        if (event.id <= lastEventId) continue;
+        logAnalysis(event.message, event.status === "failed" ? "error" : event.status === "completed" ? "success" : "info");
+        lastEventId = event.id;
+      }
+      renderAnalysisConsole();
+    } catch {
+      // Polling is informational; the analysis request remains authoritative.
+    }
+  };
+  poll();
+  const timer = setInterval(poll, 700);
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+    state.analysisTaskActive = false;
+    state.analysisPercent = null;
+    state.analysisTaskName = null;
+    renderAnalysisConsole();
+  };
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
 async function runSeizureDetection() {
   if (!state.file || state.seizureDetectionStatus === "running") return;
   markReportOutOfDate();
   state.seizureDetectionStatus = "running";
+  logAnalysis("Preparing recording for seizure detection");
   saveLocal();
   renderDetectedSeizures();
   try {
     await ensureAnalysisSession();
+    logAnalysis("Running seizure detection model; processing can take a while");
     const response = await fetch(`${API_BASE_URL}/seizure-detection/${state.analysisSessionId}`, { method: "POST" });
     if (!response.ok) throw new Error(await response.text());
     const result = await response.json();
     if (result.status !== "completed") throw new Error("Seizure detection failed.");
     state.seizureDetection = result.seizure_detection;
     state.seizureDetectionStatus = "completed";
+    logAnalysis(`Seizure detection complete: ${result.seizure_detection?.seizure_count ?? 0} event(s) found`, "success");
     state.seizureDetectionRunAt = new Date().toISOString();
     // Successful rerun replaces all previous automated candidates.
     syncAutomatedSeizureAnnotations();
@@ -363,6 +442,7 @@ async function runSeizureDetection() {
     draw();
     toast("Seizure detection completed");
   } catch (err) {
+    logAnalysis(`Seizure detection failed: ${err.message || "unknown error"}`, "error");
     console.error("Seizure detection error:", err);
     state.seizureDetection = null;
     state.seizureDetectionStatus = "failed";
@@ -381,19 +461,24 @@ async function runBackgroundAnalysis() {
   if (!state.file || state.backgroundAnalysisStatus === "running") return;
   markReportOutOfDate();
   state.backgroundAnalysisStatus = "running";
+  logAnalysis("Preparing recording metadata for background analysis");
   saveLocal();
   renderBackgroundAnalysisStatus();
   const reportButton = $("#generateReport");
   reportButton.disabled = true;
   reportButton.textContent = "Analysing EEG...";
+  let stopProgressPolling = null;
   try {
     await ensureAnalysisSession();
+    logAnalysis("Calculating EEG background features and signal quality");
+    stopProgressPolling = startProgressPolling("background");
     const response = await fetch(`${API_BASE_URL}/background-analysis/${state.analysisSessionId}`, { method: "POST" });
     if (!response.ok) throw new Error(await response.text());
     const result = await response.json();
     if (result.status !== "completed") throw new Error(result.detail || "Background analysis failed.");
     state.backgroundAnalysis = result.background_analysis;
     state.backgroundAnalysisStatus = "completed";
+    logAnalysis("Background analysis complete", "success");
     state.backgroundAnalysisRunAt = new Date().toISOString();
     state.recordingMetadata = result.recording_metadata ?? state.recordingMetadata;
     saveLocal();
@@ -402,6 +487,7 @@ async function runBackgroundAnalysis() {
     reportButton.textContent = state.reportGeneratedAt && state.reportOutOfDate ? "Regenerate Report" : "Generate Report";
     toast("Background analysis completed");
   } catch (err) {
+    logAnalysis(`Background analysis failed: ${err.message || "unknown error"}`, "error");
     console.error("Background analysis error:", err);
     state.backgroundAnalysis = null;
     state.backgroundAnalysisStatus = "failed";
@@ -411,11 +497,15 @@ async function runBackgroundAnalysis() {
     reportButton.disabled = true;
     reportButton.textContent = "Background Analysis Failed";
     toast("Background analysis failed");
+  } finally {
+    stopProgressPolling?.();
   }
 }
 
 async function openFile(file, restoredState = null, analysisSourceUrl = null) {
   try {
+    state.analysisLog = [];
+    logAnalysis("Opening EEG recording");
     const reportButton = $("#generateReport");
     reportButton.disabled = true;
     reportButton.textContent = "Loading EEG...";
@@ -434,12 +524,15 @@ async function openFile(file, restoredState = null, analysisSourceUrl = null) {
     let uploadResult = null;
     // Nicolet .e files must be converted before the viewer can parse them.
     if (isNicolet) {
+      logAnalysis("Converting Nicolet recording to EDF");
       uploadResult = await createNicoletAnalysisSession(uploadedFile);
       state.analysisSessionId = uploadResult.session_id;
       file = await fetchSessionEDF(state.analysisSessionId, uploadResult.edf_filename);
     }
     state.file = file;
+    logAnalysis("Reading EDF header and signal channels");
     state.edf = await parseEDF(file);
+    logAnalysis(`Recording loaded: ${state.edf.signals.length} signals, ${fmt(state.edf.duration)} duration`, "success");
     reportButton.disabled = true;
     reportButton.textContent = "Analysing EEG...";
     state.start = 0;
@@ -1101,6 +1194,11 @@ $("#generateReport").onclick = async () => {
   const originalText = button.textContent;
   button.disabled = true;
   button.textContent = "Generating...";
+  state.analysisTaskActive = true;
+  state.analysisPercent = null;
+  state.analysisTaskName = "report";
+  state.analysisMessage = "Preparing report";
+  logAnalysis("Starting report generation");
   toast("Generating report...");
   const annotationResults = {
     schemaVersion: "1.0",
@@ -1117,8 +1215,11 @@ $("#generateReport").onclick = async () => {
       (annotation) => annotation.origin !== "automated"
     )
   };
+  let stopProgressPolling = null;
   try {
     await ensureAnalysisSession();
+    logAnalysis("Sending EEG findings and annotations to the report builder");
+    stopProgressPolling = startProgressPolling("report");
     const formData = new FormData();
     formData.append("session_id", state.analysisSessionId);
     formData.append("seizure_results_json", JSON.stringify(buildReportSeizureDetection()));
@@ -1155,12 +1256,19 @@ $("#generateReport").onclick = async () => {
     }
     state.reportGeneratedAt = new Date().toISOString();
     state.reportOutOfDate = false;
+    logAnalysis("Report PDF generated and ready to save", "success");
     saveLocal();
     toast("Report generated");
   } catch (err) {
+    logAnalysis(`Report generation failed: ${err.message || "unknown error"}`, "error");
     console.error("Report generation error:", err);
     alert(err.message || "Could not generate report.");
   } finally {
+    stopProgressPolling?.();
+    state.analysisTaskActive = false;
+    state.analysisPercent = null;
+    state.analysisTaskName = null;
+    renderAnalysisConsole();
     button.disabled = false;
     button.textContent = state.reportGeneratedAt ? "Regenerate Report" : "Generate Report";
   }

@@ -200,7 +200,7 @@ def getFeatures(eegData, fs):
     features=features.transpose(2,1,0)
     features=np.nan_to_num(features)
     return features
-def findArtifacts(epochs, feature_arr, showRepairs=False):    
+def findArtifacts(epochs, feature_arr, showRepairs=False, progress_callback=None):
 
     colors=[]
 
@@ -222,7 +222,8 @@ def findArtifacts(epochs, feature_arr, showRepairs=False):
         plt.show()
         plt.close()
 
-    for x in tqdm(range(feature_arr.shape[0])):
+    total_epochs = feature_arr.shape[0]
+    for x in tqdm(range(total_epochs)):
         feature=feature_arr[x]
         # epoch level
         color=[]
@@ -288,6 +289,11 @@ def findArtifacts(epochs, feature_arr, showRepairs=False):
             else:
                 color.append('gray')
         colors.append(color)
+        if progress_callback and (x == total_epochs - 1 or (x + 1) % max(1, total_epochs // 100) == 0):
+            progress_callback(
+                int(100 * (x + 1) / max(1, total_epochs)),
+                f"Repairing EEG epoch {x + 1} of {total_epochs}"
+            )
 
     epoch_gen=epochs.copy()
     # set epoch data with new data

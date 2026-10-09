@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -43,10 +44,41 @@ app.add_middleware(
 
 ANALYSIS_SESSIONS = {}
 SOURCE_JOBS = {}
+ANALYSIS_PROGRESS = {}
 MODEL_PATH = os.getenv(
     "SEIZURE_MODEL_PATH",
     "app/official_seizure_transformer_model.pth"
 )
+
+
+def begin_analysis_progress(session_id: str, task: str):
+    ANALYSIS_PROGRESS[(session_id, task)] = {
+        "status": "running", "percent": None, "message": "Starting", "events": [], "next_event_id": 1
+    }
+    return lambda percent, message: update_analysis_progress(session_id, task, percent, message)
+
+
+def update_analysis_progress(session_id: str, task: str, percent, message: str, status="running"):
+    progress = ANALYSIS_PROGRESS.setdefault((session_id, task), {
+        "status": status, "percent": None, "message": "Starting", "events": [], "next_event_id": 1
+    })
+    percent = max(0, min(100, int(percent))) if percent is not None else None
+    progress.update({"status": status, "percent": percent, "message": message})
+    events = progress["events"]
+    if not events or events[-1]["message"] != message:
+        event_id = progress["next_event_id"]
+        progress["next_event_id"] += 1
+        events.append({"id": event_id, "message": message, "percent": percent, "status": status})
+        del events[:-100]
+
+
+@app.get("/analysis-progress/{session_id}/{task}")
+async def get_analysis_progress(session_id: str, task: str):
+    if task not in {"background", "report"}:
+        raise HTTPException(status_code=400, detail="Unknown analysis task.")
+    return ANALYSIS_PROGRESS.get((session_id, task), {
+        "status": "idle", "percent": None, "message": None, "events": []
+    })
 
 
 def convert_nicolet_to_edf(source_path, work_dir):
@@ -330,13 +362,18 @@ async def post_background_analysis(session_id: str):
         )
 
     try:
-        analysis = prepare_analysis(
+        progress_callback = begin_analysis_progress(session_id, "background")
+        progress_callback(None, "Starting EEG background analysis")
+        analysis = await run_in_threadpool(
+            prepare_analysis,
             session["eeg_path"],
-            nicolet_metadata=session["nicolet_metadata"]
+            nicolet_metadata=session["nicolet_metadata"],
+            progress_callback=progress_callback
         )
         session["report"] = analysis["report"]
         session["recording_metadata"] = analysis["recording_metadata"]
         session["background_analysis"] = analysis["background_analysis"]
+        update_analysis_progress(session_id, "background", 100, "Background analysis complete", "completed")
         return {
             "status": "completed",
             "recording_metadata": analysis["recording_metadata"],
@@ -344,6 +381,7 @@ async def post_background_analysis(session_id: str):
         }
 
     except Exception as exc:
+        update_analysis_progress(session_id, "background", None, f"Background analysis failed: {exc}", "failed")
         print("Background analysis failed:", exc)
         return {
             "status": "failed",
@@ -379,25 +417,40 @@ async def post_generate_report(
             detail="Invalid seizure or annotation JSON."
         )
 
-    if session["report"] is None:
-        analysis = prepare_analysis(
-            session["eeg_path"],
-            nicolet_metadata=session["nicolet_metadata"]
-        )
-        session["report"] = analysis["report"]
-        session["recording_metadata"] = analysis["recording_metadata"]
-        session["background_analysis"] = analysis["background_analysis"]
-
     try:
-        result = generate_report_from_analysis(
+        progress_callback = begin_analysis_progress(session_id, "report")
+        progress_callback(0, "Starting report generation")
+        def report_generation_progress(percent, message):
+            scaled_percent = None if percent is None else 45 + int(percent * 0.55)
+            progress_callback(scaled_percent, message)
+
+        if session["report"] is None:
+            progress_callback(None, "Running EEG analysis required for the report")
+            def report_analysis_progress(percent, message):
+                progress_callback(None, message)
+
+            analysis = await run_in_threadpool(
+                prepare_analysis,
+                session["eeg_path"],
+                nicolet_metadata=session["nicolet_metadata"],
+                progress_callback=report_analysis_progress
+            )
+            session["report"] = analysis["report"]
+            session["recording_metadata"] = analysis["recording_metadata"]
+            session["background_analysis"] = analysis["background_analysis"]
+
+        result = await run_in_threadpool(
+            generate_report_from_analysis,
             report=session["report"],
             eeg_path=session["eeg_path"],
             recording_metadata=session["recording_metadata"],
             seizure_results=seizure_results,
             annotation_results=annotation_results,
             seizure_detection_status=seizure_detection_status,
-            output_root=session["work_dir"]
+            output_root=session["work_dir"],
+            progress_callback=report_generation_progress
         )
+        update_analysis_progress(session_id, "report", 100, "Report PDF ready", "completed")
         pdf_path = result["pdf_path"]
         original_filename = session["original_filename"]
 
@@ -408,8 +461,10 @@ async def post_generate_report(
         )
 
     except ValueError as exc:
+        update_analysis_progress(session_id, "report", None, f"Report generation failed: {exc}", "failed")
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
+        update_analysis_progress(session_id, "report", None, f"Report generation failed: {exc}", "failed")
         raise HTTPException(status_code=500, detail=str(exc))
 
 
