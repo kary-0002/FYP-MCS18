@@ -68,7 +68,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
   }, []);
 
-  async function handleEmailAuth(event: React.FormEvent) {
+  async function handleEmailAuth(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setMessage(null);

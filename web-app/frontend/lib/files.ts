@@ -1,6 +1,6 @@
 export const FILE_BUCKET = "user-files";
 export const MAX_FILE_BYTES = 500 * 1024 * 1024;
-export const MAX_NICOLET_SOURCE_BYTES = 5 * 1024 * 1024 * 1024;
+export const MAX_EEG_FILE_BYTES = 5 * 1024 * 1024 * 1024;
 export const RECORDING_SOURCE_NAME = "source.e";
 export const RECORDING_EDF_NAME = "recording.edf";
 export const RECORDING_STATE_NAME = "recording_state.json";

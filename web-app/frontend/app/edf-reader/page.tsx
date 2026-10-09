@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { FILE_BUCKET, getRecordingPathsFromEdfPath,buildRecordingPaths, MAX_NICOLET_SOURCE_BYTES } from "@/lib/files";
+import { FILE_BUCKET, getRecordingPathsFromEdfPath,buildRecordingPaths, MAX_EEG_FILE_BYTES } from "@/lib/files";
 import * as tus from "tus-js-client";
 
 function getApiBaseUrl() {
@@ -314,6 +314,25 @@ function EDFReaderContent() {
         }
         const payload = await requestViewerSavePayload();
         latestRecordingStateRef.current = payload.state;
+        if (payload.file.size > MAX_EEG_FILE_BYTES) {
+          throw new Error("EDF file is larger than the 5 GB limit.");
+        }
+        if (!savedBundle || forceNew) {
+          const { data: existingRows, error: duplicateError } = await supabase
+            .from("user_files")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("kind", "edf")
+            .eq("original_name", payload.file.name)
+            .eq("size_bytes", payload.file.size)
+            .limit(1);
+          if (duplicateError) throw duplicateError;
+          const existing = existingRows?.[0];
+          if (existing) {
+            router.replace(`/edf-reader?file=${encodeURIComponent(existing.id)}`);
+            return;
+          }
+        }
         // Existing recording: explicitly resync its mutable state/report.
         if (savedBundle && !forceNew) {
           const stateBlob = new Blob(
@@ -422,7 +441,7 @@ function EDFReaderContent() {
         setSavingRecording(false);
       }
     },
-    [report, requestViewerSavePayload, savedBundle]
+    [report, requestViewerSavePayload, router, savedBundle]
   );
 
   const syncTheme = useCallback(() => {
@@ -469,7 +488,7 @@ function EDFReaderContent() {
           if (!file.name.toLowerCase().endsWith(".e")) {
             throw new Error("Expected a Nicolet .e recording.");
           }
-          if (file.size > MAX_NICOLET_SOURCE_BYTES) {
+          if (file.size > MAX_EEG_FILE_BYTES) {
             throw new Error("Nicolet .e file is larger than the 5 GB limit.");
           }
           const supabase = createClient();

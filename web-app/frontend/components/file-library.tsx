@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as tus from "tus-js-client";
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, RefreshCw, Search, Trash2, Upload } from "lucide-react";
@@ -8,11 +8,12 @@ import { createClient } from "@/lib/supabase/client";
 import {
   buildRecordingPaths,
   buildStoragePath,
+  getRecordingPathsFromEdfPath,
   classifyFile,
   isNicoletSourceFile,
   FILE_BUCKET,
   MAX_FILE_BYTES,
-  MAX_NICOLET_SOURCE_BYTES,
+  MAX_EEG_FILE_BYTES,
   type FileKind,
 } from "@/lib/files";
 import { Button } from "@/components/ui/button";
@@ -207,6 +208,19 @@ export function FileLibrary() {
     };
   }, []);
 
+  async function findExistingEeg(userId: string, fileName: string, fileSize: number) {
+    const { data, error: duplicateError } = await supabase
+      .from("user_files")
+      .select("id, storage_path")
+      .eq("user_id", userId)
+      .eq("kind", "edf")
+      .eq("original_name", fileName)
+      .eq("size_bytes", fileSize)
+      .limit(1);
+    if (duplicateError) throw duplicateError;
+    return data?.[0] ?? null;
+  }
+
   async function uploadResumable(file: File, storagePath: string, accessToken: string, progressLabel: string) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
@@ -305,6 +319,14 @@ export function FileLibrary() {
         edfName,
         { type: "application/octet-stream", lastModified: Date.now() }
       );
+      const existing = await findExistingEeg(userId, edfName, edfFile.size);
+      if (existing) {
+        await supabase.storage
+          .from(FILE_BUCKET)
+          .remove([paths.source]);
+        setStatus(`${edfName} is already in My Files.`);
+        return;
+      }
 
       // 5. Store the converted EDF permanently using resumable upload too.
       await uploadResumable(edfFile, paths.edf, accessToken, "Saving converted EDF...");
@@ -386,12 +408,16 @@ export function FileLibrary() {
       setError("Supported files: EDF (.edf), Nicolet (.e), and PDF (.pdf).");
       return;
     }
-    if (isNicolet && file.size > MAX_NICOLET_SOURCE_BYTES) {
+    if (isNicolet && file.size > MAX_EEG_FILE_BYTES) {
       setError("Nicolet .e file is larger than the 5 GB limit.");
       return;
     }
-    if (!isNicolet && file.size > MAX_FILE_BYTES) {
-      setError("File is larger than the 500 MB limit.");
+    if (kind === "edf" && file.size > MAX_EEG_FILE_BYTES) {
+      setError("EDF file is larger than the 5 GB limit.");
+      return;
+    }
+    if (kind === "pdf" && file.size > MAX_FILE_BYTES) {
+      setError("PDF file is larger than the 500 MB limit.");
       return;
     }
 
@@ -400,12 +426,19 @@ export function FileLibrary() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setError("You need to sign in before uploading.");
+      setError("Please sign in before uploading.");
       return;
     }
 
     setUploading(true);
     try {
+      if (kind === "edf") {
+        const existing = await findExistingEeg(user.id, file.name, file.size);
+        if (existing) {
+          setStatus(`${file.name} is already in My Files.`);
+          return;
+        }
+      }
       if (isNicolet) {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session?.access_token) {
@@ -422,14 +455,21 @@ export function FileLibrary() {
           ? buildRecordingPaths(user.id, crypto.randomUUID()).edf
           : buildStoragePath(user.id, kind, file.name);
 
-      const { error: uploadError } = await supabase.storage
-        .from(FILE_BUCKET)
-        .upload(storagePath, file, {
-          contentType: kind === "pdf" ? "application/pdf" : "application/octet-stream",
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
+      if (kind === "edf") {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session?.access_token) {
+          throw sessionError ?? new Error("Your login session could not be retrieved.");
+        }
+        await uploadResumable(file, storagePath, session.access_token, "Uploading EDF...");
+      } else {
+        const { error: uploadError } = await supabase.storage
+          .from(FILE_BUCKET)
+          .upload(storagePath, file, {
+            contentType: "application/pdf",
+            upsert: false
+          });
+        if (uploadError) throw uploadError;
+      }
 
       const { error: insertError } = await supabase.from("user_files").insert({
         user_id: user.id,
@@ -471,10 +511,21 @@ export function FileLibrary() {
   uploadFileRef.current = uploadFile;
 
   async function handleDelete(row: UserFileRow) {
+    const confirmed = window.confirm(
+      row.kind === "edf"
+        ? `Delete "${row.original_name}"?\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`
+        : `Delete "${row.original_name}"?\nThis will permanently delete this report.`
+    );
+    if (!confirmed) return;
     setError(null);
+    const recordingPaths = row.kind === "edf" ? getRecordingPathsFromEdfPath(row.storage_path) : null;
+    const storagePaths = recordingPaths
+      ? [recordingPaths.edf, recordingPaths.state, recordingPaths.report, recordingPaths.source]
+      : [row.storage_path];
+
     const { error: storageError } = await supabase.storage
       .from(FILE_BUCKET)
-      .remove([row.storage_path]);
+      .remove(storagePaths);
 
     if (storageError) {
       setError(storageError.message);
@@ -503,7 +554,7 @@ export function FileLibrary() {
     setStatus(null);
   }
 
-  async function submitRename(event: FormEvent<HTMLFormElement>) {
+  async function submitRename(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!renameTarget) return;
     const baseName = renameValue.trim();
@@ -592,7 +643,7 @@ export function FileLibrary() {
           <div className="flex min-h-64 w-full max-w-xl flex-col items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-12 text-center shadow-2xl">
             <div className="rounded-full bg-primary/10 p-4 text-primary"><Upload className="h-8 w-8" /></div>
             <h2 className="mt-5 text-xl font-semibold">Drop to upload</h2>
-            <p className="mt-2 max-w-sm text-sm text-muted-foreground">EDF and PDF files up to 500 MB, or Nicolet .e files up to 5 GB.</p>
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">EDF and Nicolet .e files up to 5 GB, PDF files up to 500 MB.</p>
           </div>
         </div>
       )}
@@ -644,7 +695,7 @@ export function FileLibrary() {
               ))}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">Accepted: EDF (.edf) and PDF (.pdf) up to 500 MB; Nicolet (.e) up to 5 GB.</p>
+          <p className="text-xs text-muted-foreground">Accepted: EDF (.edf) and Nicolet (.e) up to 5 GB, PDF (.pdf) up to 500 MB.</p>
         </div>
 
         {loading ? (
@@ -655,7 +706,7 @@ export function FileLibrary() {
           <div className="px-6 py-14 text-center">
             <FileText className="mx-auto h-9 w-9 text-muted-foreground/60" />
             <h3 className="mt-3 font-medium">Your library is empty</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Upload an EDF or Nicolet recording to start building your library.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Upload an EEG recording to start building your library.</p>
           </div>
         ) : visibleFiles.length === 0 ? (
           <div className="px-6 py-12 text-center">
