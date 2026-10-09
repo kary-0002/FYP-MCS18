@@ -1,3 +1,6 @@
+if (window.parent === window) {
+  window.location.replace("/edf-reader");
+}
 const $ = (s) => document.querySelector(s);
 const state = {
   file: null,
@@ -261,13 +264,6 @@ function getPatientId(patientField) {
   if (!value || value === "X") return null;
   return value;
 }
-function fingerprint() {
-  const name = state.sourceFileName || state.file?.name || "recording";
-  const size = state.sourceFileSize ?? state.file?.size ?? 0;
-  const startDate = state.edf?.startDate ?? "";
-  const startTime = state.edf?.startTime ?? "";
-  return `neuroscope:${name}:${size}:${startDate}:${startTime}`;
-}
 function buildRecordingState() {
   return {
     schemaVersion: "2.0",
@@ -305,7 +301,6 @@ function markReportOutOfDate() {
 function saveLocal() {
   if (!state.file || !state.edf) return;
   const recordingState = buildRecordingState();
-  localStorage.setItem(fingerprint(), JSON.stringify(recordingState));
   if (window.parent !== window) {
     window.parent.postMessage(
       {
@@ -336,19 +331,6 @@ function restoreRecordingState(saved) {
   }
   state.reportGeneratedAt = saved?.report?.generatedAt ?? null;
   state.reportOutOfDate = saved?.report?.outOfDate ?? false;
-}
-function loadLocal() {
-  const stored = localStorage.getItem(fingerprint());
-  if (!stored) {
-    restoreRecordingState(null);
-    return;
-  }
-  try {
-    restoreRecordingState(JSON.parse(stored));
-  } catch (err) {
-    console.error("Could not restore recording state:", err);
-    restoreRecordingState(null);
-  }
 }
 function toast(message) {
   const t = $("#toast");
@@ -471,12 +453,22 @@ async function openFile(file, restoredState = null, analysisSourceUrl = null) {
     if (restoredState) {
       restoreRecordingState(restoredState);
     } else {
-      loadLocal();
+      restoreRecordingState(null);
     }
     ensureAutomatedSeizureAnnotations();
     if (uploadResult?.recording_metadata) {
       state.recordingMetadata = uploadResult.recording_metadata;
       saveLocal();
+    }
+    if (window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: "neuroscope:recording-opened",
+          name: state.file.name,
+          size: state.file.size
+        },
+        window.location.origin
+      );
     }
     const hasStoredSeizureState = state.seizureDetectionStatus === "completed" || state.seizureDetectionStatus === "failed";
     const hasStoredBackgroundState = state.backgroundAnalysisStatus === "completed" || state.backgroundAnalysisStatus === "failed";
@@ -1237,6 +1229,30 @@ window.addEventListener("message", async (event) => {
   if (event.data?.type === "seizureai:theme") {
     document.body.classList.toggle("dark-mode", event.data.dark);
     if (state.edf) draw();
+    return;
+  }
+  if (event.data?.type === "neuroscope:get-save-payload") {
+    const requestId = event.data.requestId;
+    if (!state.file || !state.edf) {
+      window.parent.postMessage(
+        {
+          type: "neuroscope:save-payload",
+          requestId,
+          error: "No EEG recording is currently open."
+        },
+        window.location.origin
+      );
+      return;
+    }
+    window.parent.postMessage(
+      {
+        type: "neuroscope:save-payload",
+        requestId,
+        file: state.file,
+        state: buildRecordingState()
+      },
+      window.location.origin
+    );
     return;
   }
   if (event.data?.type !== "neuroscope:open-edf") return;

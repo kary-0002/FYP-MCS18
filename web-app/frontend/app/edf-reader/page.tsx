@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -18,7 +18,7 @@ function getApiBaseUrl() {
   return "https://fyp-api.azutoro.com";
 }
 
-async function uploadTemporaryNicoletSource(file: File, storagePath: string, accessToken: string) {
+async function uploadResumableFile(file: File, storagePath: string, accessToken: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
   const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
@@ -67,6 +67,7 @@ async function waitForNicoletSourceJob(jobId: string) {
 function EDFReaderContent() {
   const searchParams = useSearchParams();
   const fileId = searchParams.get("file");
+  const router = useRouter();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const reportRef = useRef<HTMLElement>(null);
   const [savedFile, setSavedFile] = useState<{
@@ -83,6 +84,54 @@ function EDFReaderContent() {
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const [reportOutOfDate, setReportOutOfDate] = useState(false);
   const scrollToReportRef = useRef(false);
+  const [savedBundle, setSavedBundle] = useState<{
+    id: string;
+    edfPath: string;
+    statePath: string;
+    reportPath: string;
+  } | null>(null);
+  const [viewerHasRecording, setViewerHasRecording] = useState(false);
+  const [savingRecording, setSavingRecording] = useState(false);
+  const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const latestRecordingStateRef = useRef<unknown | null>(null);
+  const latestReportBlobRef = useRef<Blob | null>(null);
+  const saveInProgressRef = useRef(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let active = true;
+    const next = fileId
+      ? `/edf-reader?file=${encodeURIComponent(fileId)}`
+      : "/edf-reader";
+    const loginUrl = `/login?next=${encodeURIComponent(next)}`;
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!active) return;
+      if (!user) {
+        router.replace(loginUrl);
+        return;
+      }
+      setIsSignedIn(true);
+      setAuthChecked(true);
+    });
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      if (!session?.user) {
+        setIsSignedIn(false);
+        router.replace(loginUrl);
+        return;
+      }
+      setIsSignedIn(true);
+      setAuthChecked(true);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [fileId, router]);
 
   useEffect(() => {
     if (!report) {
@@ -104,6 +153,17 @@ function EDFReaderContent() {
     setReport(null);
     setReportOutOfDate(false);
     setReportStatus(null);
+    setSavedBundle(null);
+    setViewerHasRecording(false);
+    setRecordingSaveError(null);
+    latestRecordingStateRef.current = null;
+    latestReportBlobRef.current = null;
+    
+    if (!authChecked || !isSignedIn) {
+      setSavedFile(null);
+      setError(null);
+      return;
+    }
 
     if (!fileId) {
       setSavedFile(null);
@@ -157,6 +217,14 @@ function EDFReaderContent() {
           }
         }
         if (!cancelled) {
+          if (paths) {
+            setSavedBundle({
+              id: fileId!,
+              edfPath: paths.edf,
+              statePath: paths.state,
+              reportPath: paths.report
+            });
+          }
           setReportOutOfDate(recordingState?.report?.outOfDate ?? false);
           if (restoredReport) {
             setReport({
@@ -181,7 +249,7 @@ function EDFReaderContent() {
 
     void prepareSavedFile();
     return () => { cancelled = true; };
-  }, [fileId]);
+  }, [fileId, authChecked, isSignedIn]);
 
   const sendSavedFile = useCallback(() => {
     if (!savedFile) return;
@@ -198,7 +266,7 @@ function EDFReaderContent() {
 
   const saveRecordingState = useCallback(
     (recordingState: unknown) => {
-      const statePath = savedFile?.statePath;
+      const statePath = savedBundle?.statePath ?? savedFile?.statePath;
       if (!statePath) return;
       if (stateSaveTimerRef.current) {
         clearTimeout(stateSaveTimerRef.current);
@@ -216,22 +284,187 @@ function EDFReaderContent() {
         }
       }, 500);
     },
-    [savedFile?.statePath]
+    [savedBundle?.statePath, savedFile?.statePath]
   );
 
   const saveLatestReport = useCallback(
     async (blob: Blob) => {
-      if (!savedFile?.reportPath) return;
+      const reportPath = savedBundle?.reportPath ?? savedFile?.reportPath;
+      if (!reportPath) return;
       const supabase = createClient();
       const { error } = await supabase.storage
         .from(FILE_BUCKET)
-        .upload(savedFile.reportPath, blob, {
+        .upload(reportPath, blob, {
           contentType: "application/pdf",
           upsert: true
         });
       if (error) throw error;
     },
-    [savedFile?.reportPath]
+    [savedBundle?.reportPath, savedFile?.reportPath]
+  );
+
+  const requestViewerSavePayload = useCallback(() => {
+    return new Promise<{ file: File; state: unknown }>((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      const timeout = window.setTimeout(() => {
+        window.removeEventListener("message", handler);
+        reject(new Error("Timed out while preparing the recording for saving."));
+      }, 30000);
+      const handler = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (
+          event.data?.type !== "neuroscope:save-payload" ||
+          event.data?.requestId !== requestId
+        ) {
+          return;
+        }
+        window.clearTimeout(timeout);
+        window.removeEventListener("message", handler);
+        if (event.data.error) {
+          reject(new Error(event.data.error));
+          return;
+        }
+        if (!event.data.file || !event.data.state) {
+          reject(new Error("Viewer did not return a complete recording."));
+          return;
+        }
+        resolve({
+          file: event.data.file as File,
+          state: event.data.state
+        });
+      };
+      window.addEventListener("message", handler);
+      frameRef.current?.contentWindow?.postMessage(
+        { type: "neuroscope:get-save-payload", requestId },
+        window.location.origin
+      );
+    });
+  }, []);
+
+  const saveViewerRecording = useCallback(
+    async (forceNew = false) => {
+      if (saveInProgressRef.current) return;
+      saveInProgressRef.current = true;
+      setRecordingSaveError(null);
+      setSavingRecording(true);
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (!user || sessionError || !session?.access_token) {
+          throw new Error("You must be signed in to use the EEG Viewer.");
+        }
+        const payload = await requestViewerSavePayload();
+        latestRecordingStateRef.current = payload.state;
+        // Existing recording: explicitly resync its mutable state/report.
+        if (savedBundle && !forceNew) {
+          const stateBlob = new Blob(
+            [JSON.stringify(latestRecordingStateRef.current ?? payload.state, null, 2)],
+            { type: "application/json" }
+          );
+          const { error: stateError } = await supabase.storage
+            .from(FILE_BUCKET)
+            .upload(savedBundle.statePath, stateBlob, {
+              contentType: "application/json",
+              upsert: true
+            });
+          if (stateError) throw stateError;
+          const reportBlob = latestReportBlobRef.current ?? report?.blob ?? null;
+          if (reportBlob) {
+            const { error: reportError } = await supabase.storage
+              .from(FILE_BUCKET)
+              .upload(savedBundle.reportPath, reportBlob, {
+                contentType: "application/pdf",
+                upsert: true
+              });
+            if (reportError) throw reportError;
+          }
+          return;
+        }
+        // New locally opened EEG: automatically create a My Files bundle.
+        const paths = buildRecordingPaths(user.id, crypto.randomUUID());
+        const uploadedPaths: string[] = [];
+        let bundleCreated = false;
+        try {
+          await uploadResumableFile(payload.file, paths.edf, session.access_token);
+          uploadedPaths.push(paths.edf);
+          const initialStateBlob = new Blob(
+            [JSON.stringify(payload.state, null, 2)],
+            { type: "application/json" }
+          );
+          const { error: stateError } = await supabase.storage
+            .from(FILE_BUCKET)
+            .upload(paths.state, initialStateBlob, {
+              contentType: "application/json",
+              upsert: false
+            });
+          if (stateError) throw stateError;
+          uploadedPaths.push(paths.state);
+          const { data: row, error: insertError } = await supabase
+            .from("user_files")
+            .insert({
+              user_id: user.id,
+              kind: "edf",
+              original_name: payload.file.name,
+              storage_path: paths.edf,
+              size_bytes: payload.file.size
+            })
+            .select("id")
+            .single();
+          if (insertError || !row) {
+            throw (insertError ?? new Error("Could not create the My Files entry."));
+          }
+          bundleCreated = true;
+          const bundle = {
+            id: row.id,
+            edfPath: paths.edf,
+            statePath: paths.state,
+            reportPath: paths.report
+          };
+          setSavedBundle(bundle);
+          // Analysis may have changed while the EDF was uploading.
+          const latestState = latestRecordingStateRef.current ?? payload.state;
+          const latestStateBlob = new Blob(
+            [JSON.stringify(latestState, null, 2)],
+            { type: "application/json" }
+          );
+          const { error: latestStateError } =
+            await supabase.storage
+              .from(FILE_BUCKET)
+              .upload(paths.state, latestStateBlob, {
+                contentType: "application/json",
+                upsert: true
+              });
+          if (latestStateError) throw latestStateError;
+          // A report may also have been generated during the upload.
+          if (latestReportBlobRef.current) {
+            const { error: reportError } =
+              await supabase.storage
+                .from(FILE_BUCKET)
+                .upload(paths.report, latestReportBlobRef.current, {
+                  contentType: "application/pdf",
+                  upsert: true,
+                });
+            if (reportError) throw reportError;
+          }
+        } catch (err) {
+          // Only remove the bundle if its database entry was never created.
+          if (!bundleCreated && uploadedPaths.length) {
+            await supabase.storage
+              .from(FILE_BUCKET)
+              .remove(uploadedPaths)
+              .catch(() => {});
+          }
+          throw err;
+        }
+      } catch (err) {
+        setRecordingSaveError(err instanceof Error ? err.message : "Could not save this recording.");
+      } finally {
+        saveInProgressRef.current = false;
+        setSavingRecording(false);
+      }
+    },
+    [report, requestViewerSavePayload, savedBundle]
   );
 
   const syncTheme = useCallback(() => {
@@ -254,6 +487,22 @@ function EDFReaderContent() {
     const observer = new MutationObserver(syncTheme);
     const handleViewerMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "neuroscope:recording-opened") {
+        setViewerHasRecording(true);
+        if (!fileId) {
+          // A newly opened local EEG is a new logical recording.
+          setSavedBundle(null);
+          setRecordingSaveError(null);
+          setReport(null);
+          setReportOutOfDate(false);
+          setReportStatus(null);
+          scrollToReportRef.current = false;
+          latestRecordingStateRef.current = null;
+          latestReportBlobRef.current = null;
+          void saveViewerRecording(true);
+        }
+        return;
+      }
       if (event.data?.type === "neuroscope:prepare-nicolet" && event.data?.file) {
         const requestId = event.data.requestId;
         const file = event.data.file as File;
@@ -273,7 +522,7 @@ function EDFReaderContent() {
           }
           const paths = buildRecordingPaths(user.id, crypto.randomUUID());
           sourcePath = paths.source;
-          await uploadTemporaryNicoletSource(file, paths.source, session.access_token);
+          await uploadResumableFile(file, paths.source, session.access_token);
           const { data: signedSource, error: signedError } = await supabase.storage
             .from(FILE_BUCKET)
             .createSignedUrl(paths.source, 3600);
@@ -335,20 +584,26 @@ function EDFReaderContent() {
         return;
       }
       if (event.data?.type === "neuroscope:recording-state" && event.data?.state) {
+        latestRecordingStateRef.current = event.data.state;
         setReportOutOfDate(event.data.state?.report?.outOfDate ?? false);
-        saveRecordingState(event.data.state);
+        if (fileId || savedBundle) {
+          saveRecordingState(event.data.state);
+        }
         return;
       }
       if (event.data?.type === "seizureai:report-generated" && event.data?.blob) {
         const blob = event.data.blob as Blob;
+        latestReportBlobRef.current = blob;
         scrollToReportRef.current = true;
         setReport({ blob, name: event.data.name || "eeg_report.pdf" });
         setReportOutOfDate(false);
         setReportStatus(null);
-        void saveLatestReport(blob).catch((err) => {
-          console.error("Could not persist latest report:", err);
-          setReportStatus(err instanceof Error ? err.message : "Could not save the report with this recording.");
-        });
+        if (fileId || savedBundle) {
+          void saveLatestReport(blob).catch((err) => {
+            console.error("Could not persist latest report:", err);
+            setReportStatus(err instanceof Error ? err.message : "Could not save the report with this recording.");
+          });
+        }
         return;
       }
     };
@@ -358,7 +613,14 @@ function EDFReaderContent() {
       observer.disconnect();
       window.removeEventListener("message", handleViewerMessage);
     };
-  }, [syncTheme, saveRecordingState, saveLatestReport]);
+  }, [
+    fileId,
+    savedBundle,
+    saveViewerRecording,
+    syncTheme,
+    saveRecordingState,
+    saveLatestReport
+  ]);
 
   function downloadReport() {
     if (!reportUrl || !report) return;
@@ -370,20 +632,53 @@ function EDFReaderContent() {
     link.remove();
   }
 
+  if (!authChecked) {
+    return (
+      <div className="app-layout min-h-screen bg-background">
+        <Header />
+        <main className="px-4 py-8">
+          <p className="text-sm text-muted-foreground">
+            Checking sign-in status…
+          </p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-layout min-h-screen bg-background">
       <Header />
       <main className="px-4 pb-8">
         <div className="section-kicker">Signal review and annotation</div>
-        <h1 className="mb-4 text-3xl font-bold tracking-tight">EDF Viewer</h1>
+        <h1 className="mb-4 text-3xl font-bold tracking-tight">EEG Viewer</h1>
+        {viewerHasRecording && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-muted-foreground">
+              {savingRecording ? "Saving to My Files…" : fileId || savedBundle ? "Saved in My Files" : "Preparing to save…"}
+            </span>
+            {recordingSaveError && (
+              <Button
+                variant="outline"
+                onClick={() => void saveViewerRecording(!fileId && !savedBundle)}
+              >
+                Retry Save
+              </Button>
+            )}
+          </div>
+        )}
+        {recordingSaveError && (
+          <p className="mb-3 text-sm text-destructive">
+            {recordingSaveError}
+          </p>
+        )}
         {fileId && !savedFile && !error && (
-          <p className="mb-3 text-sm text-muted-foreground">Opening saved EDF file…</p>
+          <p className="mb-3 text-sm text-muted-foreground">Opening saved EEG recording…</p>
         )}
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <iframe
           ref={frameRef}
           src="/neuroscope/"
-          title="NeuroScope EDF viewer and annotator"
+          title="NeuroScope EEG viewer and annotator"
           className="h-[calc(100vh-10rem)] min-h-175 w-full border border-border bg-white"
           onLoad={handleFrameLoad}
         />
