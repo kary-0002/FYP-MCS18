@@ -32,12 +32,18 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isProtected = request.nextUrl.pathname.startsWith("/files");
+  const pathname = request.nextUrl.pathname;
+  const isProtected =
+    pathname.startsWith("/edf-reader") ||
+    pathname.startsWith("/files") ||
+    pathname.startsWith("/patients");
 
   if (!user && isProtected) {
     const redirectUrl = request.nextUrl.clone();
+    const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     redirectUrl.pathname = "/login";
-    redirectUrl.searchParams.set("next", request.nextUrl.pathname);
+    redirectUrl.search = "";
+    redirectUrl.searchParams.set("next", next);
     return NextResponse.redirect(redirectUrl);
   }
 

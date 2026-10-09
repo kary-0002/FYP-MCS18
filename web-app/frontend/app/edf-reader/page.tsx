@@ -93,45 +93,9 @@ function EDFReaderContent() {
   const [viewerHasRecording, setViewerHasRecording] = useState(false);
   const [savingRecording, setSavingRecording] = useState(false);
   const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const latestRecordingStateRef = useRef<unknown | null>(null);
   const latestReportBlobRef = useRef<Blob | null>(null);
   const saveInProgressRef = useRef(false);
-
-  useEffect(() => {
-    const supabase = createClient();
-    let active = true;
-    const next = fileId
-      ? `/edf-reader?file=${encodeURIComponent(fileId)}`
-      : "/edf-reader";
-    const loginUrl = `/login?next=${encodeURIComponent(next)}`;
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!active) return;
-      if (!user) {
-        router.replace(loginUrl);
-        return;
-      }
-      setIsSignedIn(true);
-      setAuthChecked(true);
-    });
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!active) return;
-      if (!session?.user) {
-        setIsSignedIn(false);
-        router.replace(loginUrl);
-        return;
-      }
-      setIsSignedIn(true);
-      setAuthChecked(true);
-    });
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
-  }, [fileId, router]);
 
   useEffect(() => {
     if (!report) {
@@ -158,12 +122,6 @@ function EDFReaderContent() {
     setRecordingSaveError(null);
     latestRecordingStateRef.current = null;
     latestReportBlobRef.current = null;
-    
-    if (!authChecked || !isSignedIn) {
-      setSavedFile(null);
-      setError(null);
-      return;
-    }
 
     if (!fileId) {
       setSavedFile(null);
@@ -249,7 +207,7 @@ function EDFReaderContent() {
 
     void prepareSavedFile();
     return () => { cancelled = true; };
-  }, [fileId, authChecked, isSignedIn]);
+  }, [fileId]);
 
   const sendSavedFile = useCallback(() => {
     if (!savedFile) return;
@@ -630,19 +588,6 @@ function EDFReaderContent() {
     document.body.appendChild(link);
     link.click();
     link.remove();
-  }
-
-  if (!authChecked) {
-    return (
-      <div className="app-layout min-h-screen bg-background">
-        <Header />
-        <main className="px-4 py-8">
-          <p className="text-sm text-muted-foreground">
-            Checking sign-in status…
-          </p>
-        </main>
-      </div>
-    );
   }
 
   return (

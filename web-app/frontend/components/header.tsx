@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, FileText, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Scan, Sun } from "lucide-react";
+import { Activity, FileText, LogOut, Moon, PanelLeftClose, PanelLeftOpen, Scan, Sun, Users } from "lucide-react";
 import { useTheme } from "next-themes";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { href: "/edf-reader", label: "EDF Viewer", icon: Activity },
-  { href: "/files", label: "My files", icon: FileText },
+  { href: "/edf-reader", label: "EEG Viewer", icon: Activity },
+  { href: "/files", label: "My Files", icon: FileText },
+  { href: "/patients", label: "My Patients", icon: Users }
 ];
 
 function ThemeToggle() {
