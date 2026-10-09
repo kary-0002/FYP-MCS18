@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as tus from "tus-js-client";
-import { FileText, Trash2, Upload } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildRecordingPaths,
@@ -17,6 +17,15 @@ import {
 } from "@/lib/files";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface UserFileRow {
   id: string;
@@ -25,6 +34,60 @@ interface UserFileRow {
   storage_path: string;
   size_bytes: number | null;
   created_at: string;
+}
+
+type FileFilter = "all" | FileKind;
+type SortKey = "name" | "kind" | "size" | "date";
+
+function SortHeader({
+  label,
+  sort,
+  active,
+  direction,
+  onSort,
+}: {
+  label: string;
+  sort: SortKey;
+  active: boolean;
+  direction: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+}) {
+  const Icon = active ? (direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sort)}
+      className="inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground"
+      aria-label={`Sort by ${label}${active ? `, ${direction === "asc" ? "ascending" : "descending"}` : ""}`}
+    >
+      {label}<Icon className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+function formatFileSize(bytes: number | null) {
+  if (bytes == null || !Number.isFinite(bytes)) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function formatAddedDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function getApiBaseUrl() {
@@ -45,9 +108,46 @@ export function FileLibrary() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<FileFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [draggingFile, setDraggingFile] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<UserFileRow | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const uploadFileRef = useRef<(file: File) => void>(() => {});
+
+  const visibleFiles = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    return files
+      .filter((file) => typeFilter === "all" || file.kind === typeFilter)
+      .filter((file) => !normalizedQuery || file.original_name.toLocaleLowerCase().includes(normalizedQuery))
+      .sort((a, b) => {
+        let comparison = 0;
+        if (sortKey === "name") comparison = a.original_name.localeCompare(b.original_name, undefined, { sensitivity: "base", numeric: true });
+        if (sortKey === "kind") comparison = a.kind.localeCompare(b.kind);
+        if (sortKey === "size") comparison = (a.size_bytes ?? -1) - (b.size_bytes ?? -1);
+        if (sortKey === "date") comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return sortDirection === "asc" ? comparison : -comparison;
+      });
+  }, [files, query, sortDirection, sortKey, typeFilter]);
+
+  const totalBytes = files.reduce((total, file) => total + (file.size_bytes ?? 0), 0);
+
+  function changeSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDirection(key === "name" || key === "kind" ? "asc" : "desc");
+    }
+  }
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const { data, error: queryError } = await supabase
       .from("user_files")
       .select("id, kind, original_name, storage_path, size_bytes, created_at")
@@ -64,6 +164,48 @@ export function FileLibrary() {
   useEffect(() => {
     void loadFiles();
   }, [loadFiles]);
+
+  useEffect(() => {
+    let dragDepth = 0;
+    const hasDraggedFiles = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes("Files");
+
+    const onDragEnter = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      setDraggingFile(true);
+    };
+    const onDragOver = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) setDraggingFile(false);
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      setDraggingFile(false);
+      const file = event.dataTransfer?.files[0];
+      if (file) uploadFileRef.current(file);
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   async function uploadResumable(file: File, storagePath: string, accessToken: string, progressLabel: string) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -241,7 +383,7 @@ export function FileLibrary() {
     const isNicolet = isNicoletSourceFile(file);
     const kind = classifyFile(file);
     if (!isNicolet && !kind) {
-      setError("Only EDF (.edf) and Nicolet (.e) EEG recordings are supported.");
+      setError("Supported files: EDF (.edf), Nicolet (.e), and PDF (.pdf).");
       return;
     }
     if (isNicolet && file.size > MAX_NICOLET_SOURCE_BYTES) {
@@ -326,6 +468,8 @@ export function FileLibrary() {
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
+  uploadFileRef.current = uploadFile;
+
   async function handleDelete(row: UserFileRow) {
     setError(null);
     const { error: storageError } = await supabase.storage
@@ -350,27 +494,90 @@ export function FileLibrary() {
     setFiles((current) => current.filter((file) => file.id !== row.id));
   }
 
+  function openRename(row: UserFileRow) {
+    const extension = row.original_name.match(/\.[^.]+$/)?.[0] ?? "";
+    setRenameTarget(row);
+    setRenameValue(extension ? row.original_name.slice(0, -extension.length) : row.original_name);
+    setRenameError(null);
+    setError(null);
+    setStatus(null);
+  }
+
+  async function submitRename(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!renameTarget) return;
+    const baseName = renameValue.trim();
+    if (!baseName || baseName === "." || baseName === "..") {
+      setRenameError("Enter a valid file name.");
+      return;
+    }
+    if (/[\\/\u0000]/.test(baseName)) {
+      setRenameError("File names can’t contain slashes.");
+      return;
+    }
+    const extension = renameTarget.original_name.match(/\.[^.]+$/)?.[0] ?? "";
+    const newName = `${baseName}${extension}`;
+    if (newName.length > 255) {
+      setRenameError("File names must be 255 characters or fewer.");
+      return;
+    }
+    if (newName === renameTarget.original_name) {
+      setRenameTarget(null);
+      return;
+    }
+
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      const { error: renameError } = await supabase
+        .from("user_files")
+        .update({ original_name: newName })
+        .eq("id", renameTarget.id)
+        .select("id")
+        .single();
+      if (renameError) throw renameError;
+
+      setFiles((current) => current.map((file) =>
+        file.id === renameTarget.id ? { ...file, original_name: newName } : file
+      ));
+      setStatus(`Renamed to ${newName}`);
+      setRenameTarget(null);
+    } catch (err) {
+      const errorRecord = typeof err === "object" && err !== null
+        ? err as { message?: unknown; code?: unknown }
+        : null;
+      const message = typeof errorRecord?.message === "string"
+        ? errorRecord.message
+        : err instanceof Error ? err.message : "Could not rename the file.";
+      if (errorRecord?.code === "42501" || /row-level security/i.test(message)) {
+        setRenameError(`${message} Check that Supabase has an UPDATE policy on public.user_files scoped to auth.uid() = user_id.`);
+      } else if (errorRecord?.code === "PGRST116") {
+        setRenameError("Supabase did not return the updated row. Check the table’s UPDATE policy and confirm this file belongs to the signed-in user.");
+      } else {
+        setRenameError(message);
+      }
+    } finally {
+      setRenaming(false);
+    }
+  }
+
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <Card
-        className="cursor-pointer border border-dashed p-8 text-center transition-all hover:border-primary hover:bg-primary/5"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          const file = event.dataTransfer.files[0];
-          if (file) void uploadFile(file);
-        }}
-        onClick={() => document.getElementById("document-upload")?.click()}
-      >
-        <Upload className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-        <p className="font-medium">Upload an EEG recording</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Accepted: EDF (.edf) and Nicolet (.e)
-        </p>
+    <div className="relative mx-auto w-full max-w-6xl space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border bg-card px-4 py-2.5 text-sm text-muted-foreground shadow-sm" aria-label="Library highlights">
+          <span><strong className="font-semibold text-foreground">{loading ? "—" : files.length}</strong> files</span>
+          <span><strong className="font-semibold text-foreground">{loading ? "—" : files.filter((file) => file.kind === "edf").length}</strong> EEG recordings</span>
+          <span><strong className="font-semibold text-foreground">{loading ? "—" : formatFileSize(totalBytes)}</strong> used</span>
+        </div>
+        <div className="flex items-center gap-3 sm:justify-end">
+          <Button type="button" onClick={() => document.getElementById("document-upload")?.click()} disabled={uploading}>
+            <Upload className="mr-2 h-4 w-4" />{uploading ? "Uploading…" : "Upload file"}
+          </Button>
+        </div>
         <input
           id="document-upload"
           type="file"
-          accept=".edf,.e"
+          accept=".edf,.e,.pdf,application/pdf"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -378,63 +585,190 @@ export function FileLibrary() {
             event.target.value = "";
           }}
         />
-        {uploading && (
-          <p className="mt-3 text-sm text-muted-foreground">Uploading...</p>
-        )}
-      </Card>
+      </div>
+
+      {draggingFile && (
+        <div className="fixed inset-0 z-[100] pointer-events-none flex items-center justify-center bg-background/75 p-6 backdrop-blur-sm">
+          <div className="flex min-h-64 w-full max-w-xl flex-col items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-card px-8 py-12 text-center shadow-2xl">
+            <div className="rounded-full bg-primary/10 p-4 text-primary"><Upload className="h-8 w-8" /></div>
+            <h2 className="mt-5 text-xl font-semibold">Drop to upload</h2>
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">EDF and PDF files up to 500 MB, or Nicolet .e files up to 5 GB.</p>
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {status && <p className="text-sm text-muted-foreground">{status}</p>}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <Card className="overflow-hidden">
+        <div className="space-y-4 border-b p-4 sm:p-5">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-lg font-semibold">Browse files</h2>
+              <p className="text-sm text-muted-foreground">
+                {loading ? "Loading your library…" : `${visibleFiles.length} of ${files.length} ${files.length === 1 ? "file" : "files"}`}
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => void loadFiles()} disabled={loading} aria-label="Refresh file list">
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <label className="relative block w-full lg:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by file name…"
+                aria-label="Search files by name"
+                className="pl-9"
+              />
+            </label>
+            <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Filter by file type">
+              {([
+                ["all", "All files", files.length],
+                ["edf", "EEG", files.filter((file) => file.kind === "edf").length],
+                ["pdf", "Reports", files.filter((file) => file.kind === "pdf").length],
+              ] as const).map(([filter, label, count]) => (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setTypeFilter(filter)}
+                  aria-pressed={typeFilter === filter}
+                  className={`rounded-md px-3 py-1.5 text-sm transition-colors ${typeFilter === filter ? "bg-background font-medium text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {label}<span className="ml-1.5 text-xs text-muted-foreground">{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Accepted: EDF (.edf) and PDF (.pdf) up to 500 MB; Nicolet (.e) up to 5 GB.</p>
+        </div>
+
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading files...</p>
+          <div className="space-y-3 p-5" aria-label="Loading files">
+            {[0, 1, 2].map((item) => <div key={item} className="h-12 animate-pulse rounded-md bg-muted" />)}
+          </div>
         ) : files.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No files stored yet. Local viewing still works without uploading.
-          </p>
+          <div className="px-6 py-14 text-center">
+            <FileText className="mx-auto h-9 w-9 text-muted-foreground/60" />
+            <h3 className="mt-3 font-medium">Your library is empty</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Upload an EDF or Nicolet recording to start building your library.</p>
+          </div>
+        ) : visibleFiles.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <Search className="mx-auto h-8 w-8 text-muted-foreground/60" />
+            <h3 className="mt-3 font-medium">No files match those filters</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Try another name or file type.</p>
+            <Button className="mt-4" variant="outline" size="sm" onClick={() => { setQuery(""); setTypeFilter("all"); }}>Clear search and filters</Button>
+          </div>
         ) : (
-          files.map((file) => (
-            <Card
-              key={file.id}
-              className="flex min-h-28 flex-col items-start justify-between gap-4 p-4 transition-all hover:border-primary/60 hover:bg-primary/5"
-            >
-              <div className="flex w-full min-w-0 items-center gap-3">
-                <FileText className="h-5 w-5 shrink-0 text-primary" />
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <p
-                    className="block max-w-full truncate text-sm font-medium"
-                    title={file.original_name.replace(/\.edf$/i, "")}
-                  >
-                    {file.original_name.replace(/\.edf$/i, "")}
-                  </p>
-                  <p className="text-xs text-muted-foreground uppercase">
-                    {file.kind === "edf" ? "EEG recording" : "PDF Report"}
-                  </p>
-                </div>
-              </div>
-              <div className="flex w-full shrink-0 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 border-primary/40 bg-secondary text-foreground hover:border-primary hover:bg-accent dark:border-primary/50 dark:bg-muted dark:hover:bg-accent"
-                  onClick={() => void handleDownload(file)}
-                >
-                  Open
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="border border-destructive/40 bg-destructive/10 text-destructive hover:border-destructive hover:bg-destructive/20 hover:text-destructive"
-                  onClick={() => void handleDelete(file)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </Card>
-          ))
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wide">
+                <tr>
+                  <th scope="col" aria-sort={sortKey === "name" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-5 py-3"><SortHeader label="Name" sort="name" active={sortKey === "name"} direction={sortDirection} onSort={changeSort} /></th>
+                  <th scope="col" aria-sort={sortKey === "kind" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3"><SortHeader label="File type" sort="kind" active={sortKey === "kind"} direction={sortDirection} onSort={changeSort} /></th>
+                  <th scope="col" aria-sort={sortKey === "size" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3 text-right"><SortHeader label="Size" sort="size" active={sortKey === "size"} direction={sortDirection} onSort={changeSort} /></th>
+                  <th scope="col" aria-sort={sortKey === "date" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3"><SortHeader label="Date added" sort="date" active={sortKey === "date"} direction={sortDirection} onSort={changeSort} /></th>
+                  <th scope="col" className="px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {visibleFiles.map((file) => (
+                  <tr key={file.id} className="group transition-colors hover:bg-muted/30">
+                    <td className="max-w-[360px] px-5 py-3.5">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="rounded-md bg-primary/10 p-2 text-primary">
+                          {file.kind === "edf" ? <Activity className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                        </div>
+                        <span className="truncate font-medium" title={file.original_name}>{file.original_name}</span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${file.kind === "edf" ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground"}`}>
+                        {file.kind === "edf" ? "EEG recording · EDF" : "Report · PDF"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-right tabular-nums text-muted-foreground">{formatFileSize(file.size_bytes)}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground" title={new Date(file.created_at).toLocaleString()}>{formatAddedDate(file.created_at)}</td>
+                    <td className="whitespace-nowrap px-5 py-3.5">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => void handleDownload(file)}>Open</Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => openRename(file)}
+                          aria-label={`Rename ${file.original_name}`}
+                          title="Rename file"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => void handleDelete(file)}
+                          aria-label={`Delete ${file.original_name}`}
+                          title="Delete file"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </Card>
+
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !renaming) setRenameTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename file</DialogTitle>
+            <DialogDescription>
+              Choose a new name. The file extension stays the same.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(event) => void submitRename(event)} className="space-y-5">
+            <label className="block space-y-2 text-sm font-medium" htmlFor="rename-file-name">
+              File name
+              <span className="flex items-center gap-2">
+                <Input
+                  id="rename-file-name"
+                  value={renameValue}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  autoFocus
+                  maxLength={255}
+                  disabled={renaming}
+                />
+                <span className="shrink-0 text-muted-foreground">
+                  {renameTarget?.original_name.match(/\.[^.]+$/)?.[0] ?? ""}
+                </span>
+              </span>
+            </label>
+            {renameError && <p className="text-sm text-destructive" role="alert">{renameError}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRenameTarget(null)} disabled={renaming}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={renaming || !renameValue.trim()}>
+                {renaming ? "Saving…" : "Save name"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
