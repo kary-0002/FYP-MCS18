@@ -50,6 +50,7 @@
             <select id="gain"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
           </label>
           <button class="button compact" id="fitButton">Fit signals</button>
+          <label class="button compact toolbar-open" for="edfInput" title="Open another recording">Open <span class="toolbar-open-long">recording</span></label>
         </div>
 
         <div class="plot-wrap" id="plotWrap">
@@ -68,8 +69,6 @@
           <button class="button ghost" id="importButton">Import JSON</button>
           <button class="button ghost" id="exportButton">Export JSON</button>
           <button class="button ghost" id="generateReport">Generate Report</button>
-          <label class="button ghost" for="edfInput">Open another recording</label>
-          <a class="button ghost home-link" href="/" target="_top">← Back to SeizureAI home</a>
         </div>
         <div id="annotationList" class="annotation-list"><div class="aside-empty">Select a region of the waveform to add a clinical annotation.</div></div>
       </aside>

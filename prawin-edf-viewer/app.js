@@ -33,6 +33,7 @@ const state = {
   analysisPercent: null,
   analysisTaskName: null,
   analysisMessage: null,
+  analysisConsoleExpanded: false,
 };
 const colors = {
   Seizure: "#d75a54",
@@ -361,17 +362,37 @@ function renderAnalysisConsole() {
     const actions = $(".annotation-file-actions");
     actions.parentElement.insertBefore(panel, actions.nextSibling);
   }
+  const previousLogList = $("#analysisLogList");
+  const previousScrollTop = previousLogList?.scrollTop ?? 0;
+  const wasNearBottom = previousLogList
+    ? previousLogList.scrollHeight - previousLogList.clientHeight - previousLogList.scrollTop < 24
+    : false;
   const active = state.analysisTaskActive || [state.seizureDetectionStatus, state.backgroundAnalysisStatus].includes("running");
   const progressMarkup = active
     ? `<div class="analysis-progress ${state.analysisPercent == null ? "indeterminate" : "determinate"}"><i style="width:${state.analysisPercent == null ? 35 : state.analysisPercent}%"></i></div><div class="analysis-progress-label">${state.analysisPercent == null ? escapeHtml(state.analysisMessage || "Working…") : `${Math.round(state.analysisPercent)}% ${state.analysisTaskName === "background" ? "EEG analysis" : "report generation"} · ${escapeHtml(state.analysisMessage || "In progress")}`}</div>`
     : "";
   panel.innerHTML = `
-    <div class="analysis-console-heading"><strong>Analysis activity</strong><span>${active ? "IN PROGRESS" : "ACTIVITY LOG"}</span></div>
+    <div class="analysis-console-heading">
+      <button id="toggleAnalysisLog" type="button" aria-expanded="${state.analysisConsoleExpanded}" aria-controls="analysisLogList">
+        <strong>Analysis activity</strong><span class="analysis-console-chevron" aria-hidden="true">${state.analysisConsoleExpanded ? "▴" : "▾"}</span>
+      </button>
+      <span>${active ? "IN PROGRESS" : "ACTIVITY LOG"}</span>
+    </div>
     ${progressMarkup}
-    <ol>${state.analysisLog.map(({ message, status, time }) => `
+    <div id="analysisLogList" class="analysis-console-log ${state.analysisConsoleExpanded ? "expanded" : "collapsed"}" ${state.analysisConsoleExpanded ? "" : "hidden"}>
+      <ol>${state.analysisLog.map(({ message, status, time }) => `
       <li class="${status}"><time>${time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>${escapeHtml(message)}</span></li>
     `).join("")}</ol>
+    </div>
   `;
+  $("#toggleAnalysisLog").onclick = () => {
+    state.analysisConsoleExpanded = !state.analysisConsoleExpanded;
+    renderAnalysisConsole();
+  };
+  const nextLogList = $("#analysisLogList");
+  if (nextLogList && state.analysisConsoleExpanded) {
+    nextLogList.scrollTop = wasNearBottom ? nextLogList.scrollHeight : previousScrollTop;
+  }
 }
 
 function startProgressPolling(task) {
@@ -505,6 +526,7 @@ async function runBackgroundAnalysis() {
 async function openFile(file, restoredState = null, analysisSourceUrl = null) {
   try {
     state.analysisLog = [];
+    state.analysisConsoleExpanded = false;
     logAnalysis("Opening EEG recording");
     const reportButton = $("#generateReport");
     reportButton.disabled = true;
@@ -1273,7 +1295,9 @@ $("#generateReport").onclick = async () => {
     button.textContent = state.reportGeneratedAt ? "Regenerate Report" : "Generate Report";
   }
 };
-$("#importButton").onclick = () => $("#annotationInput").click();
+$("#importButton").onclick = () => {
+  $("#annotationInput").click();
+};
 $("#annotationInput").onchange = async (e) => {
   try {
     const file = e.target.files[0];

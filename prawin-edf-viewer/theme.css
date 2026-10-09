@@ -20,11 +20,6 @@ body { background: var(--paper); }
 .button, .icon-button, .search, .control select, .annotation, dialog, dialog select, dialog input, dialog textarea, .range-card, .count { border-radius: 0; }
 .button.primary { background: var(--green); border-color: var(--green); }
 .button.primary:hover { background: #2f784c; }
-.annotation-file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
-.annotation-file-actions .button { padding: 8px 6px; text-align: center; }
-.annotation-file-actions #generateReport { grid-column: 1 / -1; }
-.annotation-file-actions label { grid-column: 1 / -1; }
-.annotation-file-actions .home-link { grid-column: 1 / -1; text-decoration: none; }
 .plot-hint, .selection span, .toast { border-radius: 0; }
 
 body.dark-mode {
@@ -51,3 +46,6 @@ body.dark-mode .annotation:hover { background: #3b3f3d; }
 body.dark-mode .range-card { background: #29352e; }
 body.dark-mode dialog { background: #353535; color: var(--ink); }
 body.dark-mode .loading { background: #222c; color: var(--muted); }
+.annotation-file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.annotation-file-actions .button { padding: 8px 6px; text-align: center; }
+.annotation-file-actions #generateReport { grid-column: 1 / -1; }

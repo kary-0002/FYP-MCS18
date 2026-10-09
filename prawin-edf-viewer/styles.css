@@ -162,9 +162,13 @@ body {
   font-size: 11px;
 }
 .analysis-console-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.analysis-console-heading button { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .analysis-console-heading strong { color: #24332f; font-size: 12px; }
+.analysis-console-chevron { color: #71817b; font-size: 14px; }
 .analysis-console-heading > span { color: #71817b; font: 9px "JetBrains Mono", monospace; letter-spacing: .06em; }
 .analysis-console ol { display: grid; gap: 7px; margin: 9px 0 0; padding: 0; list-style: none; }
+.analysis-console-log { max-height: 132px; margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.analysis-console-log[hidden] { display: none; }
 .analysis-console li { display: flex; align-items: baseline; gap: 8px; line-height: 1.35; }
 .analysis-console li time { flex: 0 0 auto; color: #899690; font: 9px "JetBrains Mono", monospace; }
 .analysis-console li.success span { color: #277451; }
@@ -674,4 +678,7 @@ dialog textarea {
     white-space: nowrap;
     flex-shrink: 0;
   }
+}
+@media (max-width: 1000px) {
+  .toolbar-open-long { display: none; }
 }
