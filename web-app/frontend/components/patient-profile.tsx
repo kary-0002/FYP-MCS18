@@ -140,7 +140,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
 
   async function handleDeletePatient() {
     if (!patient) return;
-    const confirmed = window.confirm(`Delete "${patient.name || patient.patient_identifier || "this patient"}"?\n\nThe patient profile will be deleted, but its EEG recordings will remain in My Files and become unassigned.`);
+    const confirmed = window.confirm(`Delete "${patient.name || patient.patient_identifier || "this patient"}"?\nThe patient profile will be deleted, but its EEG recordings will remain in My Files and become unassigned.`);
     if (!confirmed) return;
     setError(null);
     const { error: deleteError } = await supabase
@@ -155,7 +155,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
   }
 
   async function handleUnassignRecording(recording: RecordingRow) {
-    const confirmed = window.confirm(`Unassign "${recording.original_name}" from this patient?\n\nThe EEG recording will remain in My Files.`);
+    const confirmed = window.confirm(`Unassign "${recording.original_name}" from this patient?\nThe EEG recording will remain in My Files.`);
     if (!confirmed) return;
     setError(null);
     const { error: updateError } = await supabase
@@ -170,7 +170,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
   }
 
   async function handleDeleteRecording(recording: RecordingRow) {
-    const confirmed = window.confirm(`Delete "${recording.original_name}"?\n\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`);
+    const confirmed = window.confirm(`Delete "${recording.original_name}"?\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`);
     if (!confirmed) return;
     setError(null);
     const recordingPaths = getRecordingPathsFromEdfPath(recording.storage_path);
@@ -395,7 +395,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
                   </Button>
                   <Button
                     variant="outline"
-                    className="text-destructive hover:text-destructive"
+                    className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => void handleDeleteRecording(recording)}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />

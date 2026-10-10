@@ -3,8 +3,9 @@
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as tus from "tus-js-client";
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, RefreshCw, Search, Trash2, Upload } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, RefreshCw, Search, Trash2, Upload, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { PatientAssignmentDialog, type PatientSummary } from "@/components/patient-assignment-dialog";
 import {
   buildRecordingPaths,
   buildStoragePath,
@@ -35,10 +36,11 @@ interface UserFileRow {
   storage_path: string;
   size_bytes: number | null;
   created_at: string;
+  patient_id: string | null;
 }
 
 type FileFilter = "all" | FileKind;
-type SortKey = "name" | "kind" | "size" | "date";
+type SortKey = "name" | "kind" | "patient" | "size" | "date";
 
 function SortHeader({
   label,
@@ -105,6 +107,7 @@ export function FileLibrary() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [files, setFiles] = useState<UserFileRow[]>([]);
+  const [patientLabels, setPatientLabels] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,11 +132,28 @@ export function FileLibrary() {
         let comparison = 0;
         if (sortKey === "name") comparison = a.original_name.localeCompare(b.original_name, undefined, { sensitivity: "base", numeric: true });
         if (sortKey === "kind") comparison = a.kind.localeCompare(b.kind);
+        if (sortKey === "patient") {
+          const getPatientRank = (file: UserFileRow) => {
+            if (file.kind !== "edf") return 2;
+            if (!file.patient_id) return 1;
+            return 0;
+          };
+          const aRank = getPatientRank(a);
+          const bRank = getPatientRank(b);
+          if (aRank !== bRank) return aRank - bRank;
+          if (aRank === 0) {
+            const aPatient = patientLabels[a.patient_id!] ?? "";
+            const bPatient = patientLabels[b.patient_id!] ?? "";
+            const comparison = aPatient.localeCompare(bPatient, undefined, { sensitivity: "base", numeric: true });
+            return sortDirection === "asc" ? comparison : -comparison;
+          }
+          return 0;
+        }
         if (sortKey === "size") comparison = (a.size_bytes ?? -1) - (b.size_bytes ?? -1);
         if (sortKey === "date") comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         return sortDirection === "asc" ? comparison : -comparison;
       });
-  }, [files, query, sortDirection, sortKey, typeFilter]);
+  }, [files, patientLabels, query, sortDirection, sortKey, typeFilter]);
 
   const totalBytes = files.reduce((total, file) => total + (file.size_bytes ?? 0), 0);
 
@@ -142,23 +162,38 @@ export function FileLibrary() {
       setSortDirection((direction) => direction === "asc" ? "desc" : "asc");
     } else {
       setSortKey(key);
-      setSortDirection(key === "name" || key === "kind" ? "asc" : "desc");
+      setSortDirection(key === "name" || key === "kind" || key === "patient" ? "asc" : "desc");
     }
   }
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: queryError } = await supabase
-      .from("user_files")
-      .select("id, kind, original_name, storage_path, size_bytes, created_at")
-      .order("created_at", { ascending: false });
-
-    if (queryError) {
-      setError(queryError.message);
-    } else {
-      setFiles((data ?? []) as UserFileRow[]);
+    const [fileResult, patientResult] = await Promise.all([
+      supabase
+        .from("user_files")
+        .select("id, kind, original_name, storage_path, size_bytes, created_at, patient_id")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("patients")
+        .select("id, name, patient_identifier"),
+    ]);
+    if (fileResult.error) {
+      setError(fileResult.error.message);
+      setLoading(false);
+      return;
     }
+    if (patientResult.error) {
+      setError(patientResult.error.message);
+      setLoading(false);
+      return;
+    }
+    const labels: Record<string, string> = {};
+    for (const patient of patientResult.data ?? []) {
+      labels[patient.id] = patient.name?.trim() || patient.patient_identifier || "Unnamed patient";
+    }
+    setPatientLabels(labels);
+    setFiles((fileResult.data ?? []) as UserFileRow[]);
     setLoading(false);
   }, [supabase]);
 
@@ -513,8 +548,8 @@ export function FileLibrary() {
   async function handleDelete(row: UserFileRow) {
     const confirmed = window.confirm(
       row.kind === "edf"
-        ? `Delete "${row.original_name}"?\n\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`
-        : `Delete "${row.original_name}"?\n\nThis will permanently delete this report.`
+        ? `Delete "${row.original_name}"?\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`
+        : `Delete "${row.original_name}"?\nThis will permanently delete this report.`
     );
     if (!confirmed) return;
     setError(null);
@@ -722,6 +757,7 @@ export function FileLibrary() {
                 <tr>
                   <th scope="col" aria-sort={sortKey === "name" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-5 py-3"><SortHeader label="Name" sort="name" active={sortKey === "name"} direction={sortDirection} onSort={changeSort} /></th>
                   <th scope="col" aria-sort={sortKey === "kind" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3"><SortHeader label="File type" sort="kind" active={sortKey === "kind"} direction={sortDirection} onSort={changeSort} /></th>
+                  <th scope="col" aria-sort={sortKey === "patient" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3"><SortHeader label="Patient" sort="patient" active={sortKey === "patient"} direction={sortDirection} onSort={changeSort} /></th>
                   <th scope="col" aria-sort={sortKey === "size" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3 text-right"><SortHeader label="Size" sort="size" active={sortKey === "size"} direction={sortDirection} onSort={changeSort} /></th>
                   <th scope="col" aria-sort={sortKey === "date" ? sortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-4 py-3"><SortHeader label="Date added" sort="date" active={sortKey === "date"} direction={sortDirection} onSort={changeSort} /></th>
                   <th scope="col" className="px-5 py-3 text-right">Actions</th>
@@ -730,7 +766,7 @@ export function FileLibrary() {
               <tbody className="divide-y">
                 {visibleFiles.map((file) => (
                   <tr key={file.id} className="group transition-colors hover:bg-muted/30">
-                    <td className="max-w-[360px] px-5 py-3.5">
+                    <td className="max-w-[320px] px-5 py-3.5">
                       <div className="flex min-w-0 items-center gap-3">
                         <div className="rounded-md bg-primary/10 p-2 text-primary">
                           {file.kind === "edf" ? <Activity className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
@@ -743,18 +779,58 @@ export function FileLibrary() {
                         {file.kind === "edf" ? "EEG recording · EDF" : "Report · PDF"}
                       </span>
                     </td>
+                    <td className="max-w-[160px] px-4 py-3.5">
+                      {file.kind === "edf" ? (
+                        <span
+                          className="block truncate text-sm text-muted-foreground"
+                          title={file.patient_id ? patientLabels[file.patient_id] ?? "Assigned Patient" : "Unassigned"}
+                        >
+                          {file.patient_id ? patientLabels[file.patient_id] ?? "Assigned Patient" : "Unassigned"}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-right tabular-nums text-muted-foreground">{formatFileSize(file.size_bytes)}</td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground" title={new Date(file.created_at).toLocaleString()}>{formatAddedDate(file.created_at)}</td>
                     <td className="whitespace-nowrap px-5 py-3.5">
                       <div className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => void handleDownload(file)}>Open</Button>
+                        {file.kind === "edf" ? (
+                          <PatientAssignmentDialog
+                            fileId={file.id}
+                            currentPatientId={file.patient_id}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-foreground"
+                                aria-label={file.patient_id ? `Change patient for ${file.original_name}` : `Assign patient to ${file.original_name}`}
+                                title={file.patient_id ? "Change Patient" : "Assign Patient"}
+                              >
+                                <UserRound className="h-4 w-4" />
+                              </Button>
+                            }
+                            onAssignmentChange={(patient: PatientSummary | null) => {
+                              setFiles((current) => current.map((item) => item.id === file.id ? { ...item, patient_id: patient?.id ?? null } : item));
+                              if (patient) setPatientLabels((current) => ({ ...current, [patient.id]: patient.name?.trim() || patient.patient_identifier || "Unnamed patient" }));
+                            }}
+                          />
+                        ) : (
+                          <span
+                            className="inline-flex h-9 w-9 items-center justify-center text-muted-foreground/50"
+                            aria-hidden="true"
+                          >
+                            —
+                          </span>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
                           className="text-muted-foreground hover:text-foreground"
                           onClick={() => openRename(file)}
                           aria-label={`Rename ${file.original_name}`}
-                          title="Rename file"
+                          title="Rename File"
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -764,7 +840,7 @@ export function FileLibrary() {
                           className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           onClick={() => void handleDelete(file)}
                           aria-label={`Delete ${file.original_name}`}
-                          title="Delete file"
+                          title="Delete File"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

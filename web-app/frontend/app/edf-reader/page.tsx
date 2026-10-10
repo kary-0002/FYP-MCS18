@@ -1,9 +1,11 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { UserRound } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
+import { PatientAssignmentDialog, type PatientSummary } from "@/components/patient-assignment-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { FILE_BUCKET, getRecordingPathsFromEdfPath,buildRecordingPaths, MAX_EEG_FILE_BYTES } from "@/lib/files";
 import * as tus from "tus-js-client";
@@ -64,6 +66,19 @@ async function waitForNicoletSourceJob(jobId: string) {
   throw new Error("Nicolet conversion timed out.");
 }
 
+function getSourcePatientIdentifier(recordingState: unknown) {
+  if (!recordingState || typeof recordingState !== "object") {
+    return null;
+  }
+  const state = recordingState as Record<string, any>;
+  return (
+    state.metadata?.nicolet?.patient?.altID ??
+    state.metadata?.patient_id ??
+    state.recording?.edfPatientId ??
+    null
+  );
+}
+
 function EDFReaderContent() {
   const searchParams = useSearchParams();
   const fileId = searchParams.get("file");
@@ -93,6 +108,8 @@ function EDFReaderContent() {
   const [viewerHasRecording, setViewerHasRecording] = useState(false);
   const [savingRecording, setSavingRecording] = useState(false);
   const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null);
+  const [assignedPatient, setAssignedPatient] = useState<PatientSummary | null>(null);
+  const [sourcePatientIdentifier, setSourcePatientIdentifier] = useState<string | null>(null);
   const latestRecordingStateRef = useRef<unknown | null>(null);
   const latestReportBlobRef = useRef<Blob | null>(null);
   const saveInProgressRef = useRef(false);
@@ -120,6 +137,8 @@ function EDFReaderContent() {
     setSavedBundle(null);
     setViewerHasRecording(false);
     setRecordingSaveError(null);
+    setAssignedPatient(null);
+    setSourcePatientIdentifier(null);
     latestRecordingStateRef.current = null;
     latestReportBlobRef.current = null;
 
@@ -136,12 +155,25 @@ function EDFReaderContent() {
         const supabase = createClient();
         const { data: row, error: rowError } = await supabase
           .from("user_files")
-          .select("original_name, storage_path, kind")
+          .select("original_name, storage_path, kind, patient_id")
           .eq("id", fileId)
           .eq("kind", "edf")
           .single();
 
         if (rowError || !row) throw rowError ?? new Error("EDF file not found.");
+        let linkedPatient: PatientSummary | null = null;
+        if (row.patient_id) {
+          const { data: patientRow, error: patientError } = await supabase
+            .from("patients")
+            .select("id, name, patient_identifier, date_of_birth")
+            .eq("id", row.patient_id)
+            .maybeSingle();
+          if (patientError) {
+            console.warn("Could not load assigned patient:", patientError.message);
+          } else if (patientRow) {
+            linkedPatient = patientRow as PatientSummary;
+          }
+        }
 
         const { data, error: signedError } = await supabase.storage
           .from(FILE_BUCKET)
@@ -190,6 +222,8 @@ function EDFReaderContent() {
               name: `${row.original_name.replace(/\.edf$/i, "")}_report.pdf`
             });
           }
+          setAssignedPatient(linkedPatient);
+          setSourcePatientIdentifier(getSourcePatientIdentifier(recordingState));
           setSavedFile({
             url: data.signedUrl,
             name: row.original_name,
@@ -314,6 +348,7 @@ function EDFReaderContent() {
         }
         const payload = await requestViewerSavePayload();
         latestRecordingStateRef.current = payload.state;
+        setSourcePatientIdentifier(getSourcePatientIdentifier(payload.state));
         if (payload.file.size > MAX_EEG_FILE_BYTES) {
           throw new Error("EDF file is larger than the 5 GB limit.");
         }
@@ -562,6 +597,7 @@ function EDFReaderContent() {
       }
       if (event.data?.type === "neuroscope:recording-state" && event.data?.state) {
         latestRecordingStateRef.current = event.data.state;
+        setSourcePatientIdentifier(getSourcePatientIdentifier(event.data.state));
         setReportOutOfDate(event.data.state?.report?.outOfDate ?? false);
         if (fileId || savedBundle) {
           saveRecordingState(event.data.state);
@@ -609,6 +645,8 @@ function EDFReaderContent() {
     link.remove();
   }
 
+  const assignmentFileId = fileId ?? savedBundle?.id ?? null;
+
   return (
     <div className="app-layout min-h-screen bg-background">
       <Header />
@@ -620,6 +658,31 @@ function EDFReaderContent() {
             <span className="text-muted-foreground">
               {savingRecording ? "Saving to My Files…" : fileId || savedBundle ? "Saved in My Files" : "Preparing to save…"}
             </span>
+            {assignmentFileId && !savingRecording && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">
+                  {assignedPatient ? `Patient: ${assignedPatient.name?.trim() || assignedPatient.patient_identifier || "Unnamed patient"}` : "Unassigned"}
+                </span>
+                <PatientAssignmentDialog
+                  fileId={assignmentFileId}
+                  currentPatientId={assignedPatient?.id ?? null}
+                  sourcePatientIdentifier={sourcePatientIdentifier}
+                  onAssignmentChange={setAssignedPatient}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      aria-label={assignedPatient ? "Change Patient Assignment" : "Assign Patient"}
+                      title={assignedPatient ? "Change Patient" : "Assign Patient"}
+                    >
+                      <UserRound className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+              </>
+            )}
             {recordingSaveError && (
               <Button
                 variant="outline"
