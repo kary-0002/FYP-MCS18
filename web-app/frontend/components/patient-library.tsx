@@ -2,6 +2,7 @@
 
 import { SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +38,7 @@ function formatDate(value: string | null) {
 }
 
 export function PatientLibrary() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [recordingCounts, setRecordingCounts] = useState<Record<string, number>>({});
@@ -59,6 +61,7 @@ export function PatientLibrary() {
       supabase
         .from("user_files")
         .select("patient_id")
+        .eq("kind", "edf")
         .not("patient_id", "is", null),
     ]);
     if (patientResult.error) {
@@ -221,7 +224,16 @@ export function PatientLibrary() {
             return (
               <Card
                 key={patient.id}
-                className="flex min-h-36 flex-col justify-between gap-4 p-4"
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/patients/${encodeURIComponent(patient.id)}`)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    router.push(`/patients/${encodeURIComponent(patient.id)}`);
+                  }
+                }}
+                className="flex min-h-36 cursor-pointer flex-col justify-between gap-4 p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted/50 hover:shadow-md active:translate-y-0 active:scale-[0.98]"
               >
                 <div className="flex items-start gap-3">
                   <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -229,7 +241,7 @@ export function PatientLibrary() {
                     <p className="truncate font-medium">
                       {patient.name?.trim() ||
                         patient.patient_identifier ||
-                        "Unnamed {atient"}
+                        "Unnamed Patient"}
                     </p>
                     {patient.patient_identifier && (
                       <p className="mt-1 text-sm text-muted-foreground">

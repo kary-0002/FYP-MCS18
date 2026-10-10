@@ -513,8 +513,8 @@ export function FileLibrary() {
   async function handleDelete(row: UserFileRow) {
     const confirmed = window.confirm(
       row.kind === "edf"
-        ? `Delete "${row.original_name}"?\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`
-        : `Delete "${row.original_name}"?\nThis will permanently delete this report.`
+        ? `Delete "${row.original_name}"?\n\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`
+        : `Delete "${row.original_name}"?\n\nThis will permanently delete this report.`
     );
     if (!confirmed) return;
     setError(null);
