@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CalendarDays, ChartNoAxesCombined, FileText, Pencil, Trash2, Unlink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FILE_BUCKET, getRecordingPathsFromEdfPath } from "@/lib/files";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -140,8 +141,6 @@ export function PatientProfile({ patientId }: { patientId: string }) {
 
   async function handleDeletePatient() {
     if (!patient) return;
-    const confirmed = window.confirm(`Delete "${patient.name || patient.patient_identifier || "this patient"}"?\nThe patient profile will be deleted, but its EEG recordings will remain in My Files and become unassigned.`);
-    if (!confirmed) return;
     setError(null);
     const { error: deleteError } = await supabase
       .from("patients")
@@ -155,8 +154,6 @@ export function PatientProfile({ patientId }: { patientId: string }) {
   }
 
   async function handleUnassignRecording(recording: RecordingRow) {
-    const confirmed = window.confirm(`Unassign "${recording.original_name}" from this patient?\nThe EEG recording will remain in My Files.`);
-    if (!confirmed) return;
     setError(null);
     const { error: updateError } = await supabase
       .from("user_files")
@@ -170,8 +167,6 @@ export function PatientProfile({ patientId }: { patientId: string }) {
   }
 
   async function handleDeleteRecording(recording: RecordingRow) {
-    const confirmed = window.confirm(`Delete "${recording.original_name}"?\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`);
-    if (!confirmed) return;
     setError(null);
     const recordingPaths = getRecordingPathsFromEdfPath(recording.storage_path);
     const storagePaths = recordingPaths
@@ -257,14 +252,21 @@ export function PatientProfile({ patientId }: { patientId: string }) {
               <Pencil className="mr-2 h-4 w-4" />
               Edit Patient
             </Button>
-            <Button
-              variant="outline"
-              className="w-full hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive sm:w-40"
-              onClick={() => void handleDeletePatient()}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete Patient
-            </Button>
+            <ConfirmActionDialog
+              trigger={
+                <Button
+                  variant="outline"
+                  className="w-full hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive sm:w-40"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Patient
+                </Button>
+              }
+              title="Delete patient?"
+              description="The patient profile will be deleted. Its EEG recordings will remain in My Files and become unassigned."
+              confirmLabel="Delete Patient"
+              onConfirm={handleDeletePatient}
+            />
           </div>
         </div>
       </div>
@@ -287,7 +289,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
               <p className="text-sm text-muted-foreground">
                 Patient ID
               </p>
-              <p className="mt-1 font-medium">
+              <p className="mt-0 font-medium">
                 {patient.patient_identifier || "—"}
               </p>
             </Card>
@@ -295,7 +297,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
               <p className="text-sm text-muted-foreground">
                 Date of Birth
               </p>
-              <p className="mt-1 font-medium">
+              <p className="mt-0 font-medium">
                 {formatDate(patient.date_of_birth)}
               </p>
             </Card>
@@ -303,7 +305,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
               <p className="text-sm text-muted-foreground">
                 EEG Recordings
               </p>
-              <p className="mt-1 font-medium">
+              <p className="mt-0 font-medium">
                 {recordings.length}
               </p>
             </Card>
@@ -311,14 +313,14 @@ export function PatientProfile({ patientId }: { patientId: string }) {
               <p className="text-sm text-muted-foreground">
                 Profile Created
               </p>
-              <p className="mt-1 font-medium">
+              <p className="mt-0 font-medium">
                 {formatDate(patient.created_at)}
               </p>
             </Card>
           </div>
           <Card className="p-5">
             <h2 className="font-semibold">Recording History</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-0 grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-sm text-muted-foreground">
                   First Recording Added
@@ -349,8 +351,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
                 No EEG Recordings Assigned
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Assign an EEG recording to this patient from My Files
-                or the EEG Viewer.
+                Assign an EEG recording to this patient from My Files or the EEG Viewer.
               </p>
             </Card>
           ) : (
@@ -386,21 +387,34 @@ export function PatientProfile({ patientId }: { patientId: string }) {
                   >
                     Open in Viewer
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => void handleUnassignRecording(recording)}
-                  >
-                    <Unlink className="mr-2 h-4 w-4" />
-                    Unassign
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => void handleDeleteRecording(recording)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
+                  <ConfirmActionDialog
+                    trigger={
+                      <Button variant="outline">
+                        <Unlink className="mr-2 h-4 w-4" />
+                        Unassign
+                      </Button>
+                    }
+                    title="Unassign recording?"
+                    description={`"${recording.original_name}" will remain in My Files but will no longer belong to this patient.`}
+                    confirmLabel="Unassign"
+                    destructive={false}
+                    onConfirm={() => handleUnassignRecording(recording)}
+                  />
+                  <ConfirmActionDialog
+                    trigger={
+                      <Button
+                        variant="outline"
+                        className="hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </Button>
+                    }
+                    title="Delete EEG recording?"
+                    description={`"${recording.original_name}" and its saved analysis state, annotations, and generated report will be permanently deleted.`}
+                    confirmLabel="Delete Recording"
+                    onConfirm={() => handleDeleteRecording(recording)}
+                  />
                 </div>
               </Card>
             ))

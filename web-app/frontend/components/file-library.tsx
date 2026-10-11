@@ -6,6 +6,7 @@ import * as tus from "tus-js-client";
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, RefreshCw, Search, Trash2, Upload, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PatientAssignmentDialog, type PatientSummary } from "@/components/patient-assignment-dialog";
+import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import {
   buildRecordingPaths,
   buildStoragePath,
@@ -546,12 +547,6 @@ export function FileLibrary() {
   uploadFileRef.current = uploadFile;
 
   async function handleDelete(row: UserFileRow) {
-    const confirmed = window.confirm(
-      row.kind === "edf"
-        ? `Delete "${row.original_name}"?\nThis will permanently delete the EEG recording, its saved analysis state, annotations, and generated report.`
-        : `Delete "${row.original_name}"?\nThis will permanently delete this report.`
-    );
-    if (!confirmed) return;
     setError(null);
     const recordingPaths = row.kind === "edf" ? getRecordingPathsFromEdfPath(row.storage_path) : null;
     const storagePaths = recordingPaths
@@ -766,12 +761,19 @@ export function FileLibrary() {
               <tbody className="divide-y">
                 {visibleFiles.map((file) => (
                   <tr key={file.id} className="group transition-colors hover:bg-muted/30">
-                    <td className="max-w-[320px] px-5 py-3.5">
+                    <td className="max-w-[360px] px-5 py-3.5">
                       <div className="flex min-w-0 items-center gap-3">
                         <div className="rounded-md bg-primary/10 p-2 text-primary">
                           {file.kind === "edf" ? <Activity className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                         </div>
-                        <span className="truncate font-medium" title={file.original_name}>{file.original_name}</span>
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 truncate text-left font-medium transition-colors hover:text-primary hover:underline"
+                          title={`Open ${file.original_name}`}
+                          onClick={() => void handleDownload(file)}
+                        >
+                          {file.original_name}
+                        </button>
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5">
@@ -779,14 +781,20 @@ export function FileLibrary() {
                         {file.kind === "edf" ? "EEG recording · EDF" : "Report · PDF"}
                       </span>
                     </td>
-                    <td className="max-w-[160px] px-4 py-3.5">
+                    <td className="w-[200px] max-w-[200px] px-4 py-3.5">
                       {file.kind === "edf" ? (
-                        <span
-                          className="block truncate text-sm text-muted-foreground"
-                          title={file.patient_id ? patientLabels[file.patient_id] ?? "Assigned Patient" : "Unassigned"}
-                        >
-                          {file.patient_id ? patientLabels[file.patient_id] ?? "Assigned Patient" : "Unassigned"}
-                        </span>
+                        file.patient_id ? (
+                          <button
+                            type="button"
+                            className="block w-full truncate text-left text-sm text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                            title={patientLabels[file.patient_id] ?? "Assigned Patient"}
+                            onClick={() => router.push(`/patients/${encodeURIComponent(file.patient_id!)}`)}
+                          >
+                            {patientLabels[file.patient_id] ?? "Assigned Patient"}
+                          </button>
+                        ) : (
+                          <span className="block truncate text-sm text-muted-foreground">Unassigned</span>
+                        )
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -795,7 +803,6 @@ export function FileLibrary() {
                     <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground" title={new Date(file.created_at).toLocaleString()}>{formatAddedDate(file.created_at)}</td>
                     <td className="whitespace-nowrap px-5 py-3.5">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => void handleDownload(file)}>Open</Button>
                         {file.kind === "edf" ? (
                           <PatientAssignmentDialog
                             fileId={file.id}
@@ -834,16 +841,27 @@ export function FileLibrary() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => void handleDelete(file)}
-                          aria-label={`Delete ${file.original_name}`}
-                          title="Delete File"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <ConfirmActionDialog
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              aria-label={`Delete ${file.original_name}`}
+                              title="Delete File"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          }
+                          title={file.kind === "edf" ? "Delete EEG recording?" : "Delete report?"}
+                          description={
+                            file.kind === "edf"
+                              ? `"${file.original_name}" and its saved analysis state, annotations, and generated report will be permanently deleted.`
+                              : `"${file.original_name}" will be permanently deleted.`
+                          }
+                          confirmLabel="Delete"
+                          onConfirm={() => handleDelete(file)}
+                        />
                       </div>
                     </td>
                   </tr>

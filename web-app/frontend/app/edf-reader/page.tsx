@@ -66,19 +66,6 @@ async function waitForNicoletSourceJob(jobId: string) {
   throw new Error("Nicolet conversion timed out.");
 }
 
-function getSourcePatientIdentifier(recordingState: unknown) {
-  if (!recordingState || typeof recordingState !== "object") {
-    return null;
-  }
-  const state = recordingState as Record<string, any>;
-  return (
-    state.metadata?.nicolet?.patient?.altID ??
-    state.metadata?.patient_id ??
-    state.recording?.edfPatientId ??
-    null
-  );
-}
-
 function EDFReaderContent() {
   const searchParams = useSearchParams();
   const fileId = searchParams.get("file");
@@ -109,7 +96,6 @@ function EDFReaderContent() {
   const [savingRecording, setSavingRecording] = useState(false);
   const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null);
   const [assignedPatient, setAssignedPatient] = useState<PatientSummary | null>(null);
-  const [sourcePatientIdentifier, setSourcePatientIdentifier] = useState<string | null>(null);
   const latestRecordingStateRef = useRef<unknown | null>(null);
   const latestReportBlobRef = useRef<Blob | null>(null);
   const saveInProgressRef = useRef(false);
@@ -138,7 +124,6 @@ function EDFReaderContent() {
     setViewerHasRecording(false);
     setRecordingSaveError(null);
     setAssignedPatient(null);
-    setSourcePatientIdentifier(null);
     latestRecordingStateRef.current = null;
     latestReportBlobRef.current = null;
 
@@ -223,7 +208,6 @@ function EDFReaderContent() {
             });
           }
           setAssignedPatient(linkedPatient);
-          setSourcePatientIdentifier(getSourcePatientIdentifier(recordingState));
           setSavedFile({
             url: data.signedUrl,
             name: row.original_name,
@@ -348,7 +332,6 @@ function EDFReaderContent() {
         }
         const payload = await requestViewerSavePayload();
         latestRecordingStateRef.current = payload.state;
-        setSourcePatientIdentifier(getSourcePatientIdentifier(payload.state));
         if (payload.file.size > MAX_EEG_FILE_BYTES) {
           throw new Error("EDF file is larger than the 5 GB limit.");
         }
@@ -597,7 +580,6 @@ function EDFReaderContent() {
       }
       if (event.data?.type === "neuroscope:recording-state" && event.data?.state) {
         latestRecordingStateRef.current = event.data.state;
-        setSourcePatientIdentifier(getSourcePatientIdentifier(event.data.state));
         setReportOutOfDate(event.data.state?.report?.outOfDate ?? false);
         if (fileId || savedBundle) {
           saveRecordingState(event.data.state);
@@ -661,13 +643,24 @@ function EDFReaderContent() {
             {assignmentFileId && !savingRecording && (
               <>
                 <span className="text-muted-foreground">·</span>
-                <span className="text-muted-foreground">
-                  {assignedPatient ? `Patient: ${assignedPatient.name?.trim() || assignedPatient.patient_identifier || "Unnamed patient"}` : "Unassigned"}
-                </span>
+                {assignedPatient ? (
+                  <span className="text-muted-foreground">
+                    Patient:{" "}
+                    <button
+                      type="button"
+                      className="font-medium text-foreground hover:underline"
+                      onClick={() => router.push(`/patients/${encodeURIComponent(assignedPatient.id)}`)}
+                      title="Open Patient Profile"
+                    >
+                      {assignedPatient.name?.trim() || assignedPatient.patient_identifier || "Unnamed Patient"}
+                    </button>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Unassigned</span>
+                )}
                 <PatientAssignmentDialog
                   fileId={assignmentFileId}
                   currentPatientId={assignedPatient?.id ?? null}
-                  sourcePatientIdentifier={sourcePatientIdentifier}
                   onAssignmentChange={setAssignedPatient}
                   trigger={
                     <Button
