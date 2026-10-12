@@ -122,6 +122,16 @@ async function fetchSessionEDF(sessionId, filename) {
   );
 }
 
+function mergeRecordingMetadata(current, incoming) {
+  if (!incoming) return current;
+  const nicolet = incoming?.nicolet ?? current?.nicolet ?? null;
+  return {
+    ...(current ?? {}),
+    ...incoming,
+    ...(nicolet ? { nicolet } : {})
+  };
+}
+
 async function ensureAnalysisSession() {
   if (state.analysisSessionId) return state.analysisSessionId;
   let result;
@@ -134,7 +144,7 @@ async function ensureAnalysisSession() {
     result = await createAnalysisSession(state.file);
   }
   state.analysisSessionId = result.session_id;
-  state.recordingMetadata = result.recording_metadata ?? state.recordingMetadata;
+  state.recordingMetadata = mergeRecordingMetadata(state.recordingMetadata, result.recording_metadata);
   return state.analysisSessionId;
 }
 
@@ -503,7 +513,7 @@ async function runBackgroundAnalysis() {
     state.backgroundAnalysisStatus = "completed";
     logAnalysis("Background analysis complete", "success");
     state.backgroundAnalysisRunAt = new Date().toISOString();
-    state.recordingMetadata = result.recording_metadata ?? state.recordingMetadata;
+    state.recordingMetadata = mergeRecordingMetadata(state.recordingMetadata, result.recording_metadata);
     saveLocal();
     renderBackgroundAnalysisStatus();
     reportButton.disabled = false;
@@ -574,7 +584,7 @@ async function openFile(file, restoredState = null, analysisSourceUrl = null) {
     }
     ensureAutomatedSeizureAnnotations();
     if (uploadResult?.recording_metadata) {
-      state.recordingMetadata = uploadResult.recording_metadata;
+      state.recordingMetadata = mergeRecordingMetadata(state.recordingMetadata, uploadResult.recording_metadata);
       saveLocal();
     }
     if (window.parent !== window) {
