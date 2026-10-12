@@ -329,6 +329,11 @@ export function PatientTrends({ recordings }: { recordings: TrendRecording[]; })
           {recordings.length === 1 ? "recording has" : "recordings have"}{" "}
           stored background-analysis results.
         </p>
+        {points.length < recordings.length && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Open incomplete recordings in the EEG Viewer to run Background Analysis.
+          </p>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="gap-0 p-4">

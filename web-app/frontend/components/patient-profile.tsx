@@ -2,7 +2,7 @@
 
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarDays, FileText, Pencil, Trash2, Unlink } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle2, CircleDashed, FileText, Pencil, Trash2, Unlink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FILE_BUCKET, getRecordingPathsFromEdfPath } from "@/lib/files";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
@@ -29,6 +29,8 @@ interface RecordingRow {
   size_bytes: number | null;
   created_at: string;
 }
+
+type BackgroundAnalysisAvailability = "complete" | "incomplete";
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -59,6 +61,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [recordings, setRecordings] = useState<RecordingRow[]>([]);
+  const [analysisAvailability, setAnalysisAvailability] = useState<Record<string, BackgroundAnalysisAvailability>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -93,8 +96,31 @@ export function PatientProfile({ patientId }: { patientId: string }) {
       setLoading(false);
       return;
     }
+    const loadedRecordings = (recordingResult.data ?? []) as RecordingRow[];
     setPatient(patientResult.data as PatientRow);
-    setRecordings((recordingResult.data ?? []) as RecordingRow[]);
+    setRecordings(loadedRecordings);
+    const statusEntries = await Promise.all(
+      loadedRecordings.map(async (recording) => {
+        const paths = getRecordingPathsFromEdfPath(recording.storage_path);
+        if (!paths) {
+          return [recording.id, "incomplete"] as const;
+        }
+        const { data: stateBlob, error: stateError } = await supabase.storage
+          .from(FILE_BUCKET)
+          .download(paths.state);
+        if (stateError || !stateBlob) {
+          return [recording.id, "incomplete"] as const;
+        }
+        try {
+          const state = JSON.parse(await stateBlob.text());
+          const complete = state.backgroundAnalysis?.status === "completed" && state.backgroundAnalysis?.metrics;
+          return [recording.id, complete ? "complete" : "incomplete"] as const;
+        } catch {
+          return [recording.id, "incomplete"] as const;
+        }
+      }),
+    );
+    setAnalysisAvailability(Object.fromEntries(statusEntries));
     setLoading(false);
   }, [patientId, supabase]);
 
@@ -379,6 +405,25 @@ export function PatientProfile({ patientId }: { patientId: string }) {
                     <span>
                       {formatFileSize(recording.size_bytes)}
                     </span>
+                    {analysisAvailability[recording.id] === "complete"
+                      ? (
+                        <span
+                          className="inline-flex items-center"
+                          title="Background analysis complete"
+                          aria-label="Background analysis complete"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </span>
+                      ) : analysisAvailability[recording.id] === "incomplete"
+                      ? (
+                        <span
+                          className="inline-flex items-center"
+                          title="Background analysis incomplete. Please run or retry in the EEG Viewer."
+                          aria-label="Background analysis incomplete"
+                        >
+                          <CircleDashed className="h-4 w-4" />
+                        </span>
+                      ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
