@@ -2,10 +2,11 @@
 
 import { type SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarDays, ChartNoAxesCombined, FileText, Pencil, Trash2, Unlink } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileText, Pencil, Trash2, Unlink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { FILE_BUCKET, getRecordingPathsFromEdfPath } from "@/lib/files";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
+import { PatientTrends } from "@/components/patient-trends";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -421,15 +422,7 @@ export function PatientProfile({ patientId }: { patientId: string }) {
           )}
         </TabsContent>
         <TabsContent value="trends" className="mt-5">
-          <Card className="p-8 text-center">
-            <ChartNoAxesCombined className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h2 className="mt-3 font-semibold">
-              Trends & Statistics
-            </h2>
-            <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-              Longitudinal EEG statistics will appear here once this patient has recordings with stored background-analysis results.
-            </p>
-          </Card>
+          <PatientTrends recordings={recordings} />
         </TabsContent>
       </Tabs>
       <Dialog
