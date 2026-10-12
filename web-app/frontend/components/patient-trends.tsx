@@ -105,6 +105,29 @@ function formatNumber(value: number | null | undefined, digits = 1) {
   return value.toFixed(digits);
 }
 
+function shortDateLabel(value: string) {
+  if (value === "Unknown") return value;
+  const parts = value.split(" ");
+  return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : value;
+}
+
+function groupedXAxisLabel(value: string, index: number, points: TrendPoint[]) {
+  let start = index;
+  let end = index;
+  while (start > 0 && points[start - 1]?.date === value) {
+    start -= 1;
+  }
+  while (end < points.length - 1 && points[end + 1]?.date === value
+  ) {
+    end += 1;
+  }
+  const middleIndex = Math.floor((start + end) / 2);
+  if (index !== middleIndex) {
+    return "";
+  }
+  return shortDateLabel(value);
+}
+
 function meanAvailable(left: number | null, right: number | null) {
   if (left != null && right != null) {
     return (left + right) / 2;
@@ -401,7 +424,7 @@ export function PatientTrends({ recordings }: { recordings: TrendRecording[]; })
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ left: 4, right: 8, bottom: 4, top: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} padding={{ left: 12, right: 12 }}/>
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} padding={{ left: 16, right: 16 }} interval={0} tickFormatter={(value, index) => groupedXAxisLabel(value, index, points)}/>
                 <YAxis unit=" Hz" tickLine={false} axisLine={false} width={55}/>
                 <Tooltip />
                 <Legend />
@@ -424,7 +447,7 @@ export function PatientTrends({ recordings }: { recordings: TrendRecording[]; })
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ left: 4, right: 8, bottom: 4, top: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} padding={{ left: 12, right: 12 }}/>
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} padding={{ left: 16, right: 16 }} interval={0} tickFormatter={(value, index) => groupedXAxisLabel(value, index, points)}/>
                 <YAxis unit="%" tickLine={false} axisLine={false} width={48}/>
                 <Tooltip />
                 <Legend />

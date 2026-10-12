@@ -321,14 +321,16 @@ function restoreRecordingState(saved) {
   state.annotations = saved?.annotations || [];
   state.recordingMetadata = saved?.metadata || null;
   state.seizureDetection = saved?.seizureDetection?.results ?? null;
-  state.seizureDetectionStatus = saved?.seizureDetection?.status ?? null;
+  const savedSeizureStatus = saved?.seizureDetection?.status ?? null;
+  state.seizureDetectionStatus = savedSeizureStatus === "running" ? "failed" : savedSeizureStatus;
   state.seizureDetectionRunAt = saved?.seizureDetection?.runAt ?? null;
   if (saved?.backgroundAnalysis) {
     state.backgroundAnalysis = {
       summary: saved.backgroundAnalysis.summary ?? null,
       metrics: saved.backgroundAnalysis.metrics ?? null
     };
-    state.backgroundAnalysisStatus = saved.backgroundAnalysis.status ?? null;
+    const savedBackgroundStatus = saved.backgroundAnalysis.status ?? null;
+    state.backgroundAnalysisStatus = savedBackgroundStatus === "running" ? "failed" : savedBackgroundStatus;
     state.backgroundAnalysisRunAt = saved.backgroundAnalysis.runAt ?? null;
   } else {
     state.backgroundAnalysis = null;
