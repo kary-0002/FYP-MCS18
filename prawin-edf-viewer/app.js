@@ -9,6 +9,8 @@ const state = {
   window: 10,
   gain: 1,
   channels: [],
+  channelDefinitions: [],
+  openChannelGroups: new Set(),
   data: [],
   selection: null,
   annotations: [],
@@ -44,6 +46,79 @@ const colors = {
   "Technical issue": "#7b8582",
   Other: "#bd7a9c",
 };
+
+// Fixed bipolar montage order and colours. These are derived from the EDF
+// source channels at load time; they are not additional samples in the file.
+const calculatedGroups = [
+  { id: "outer-right", name: "Outer right", color: "#d13d3d", pairs: ["Fp2-F8", "F8-T4", "T4-T6", "T6-O2"] },
+  { id: "outer-left", name: "Outer left", color: "#2859b8", pairs: ["Fp1-F7", "F7-T3", "T3-T5", "T5-O1"] },
+  { id: "inner-right", name: "Inner right", color: "#d13d3d", pairs: ["Fp2-F4", "F4-C4", "C4-P4", "P4-O2"] },
+  { id: "inner-left", name: "Inner left", color: "#2859b8", pairs: ["Fp1-F3", "F3-C3", "C3-P3", "P3-O1"] },
+  { id: "center", name: "Center", color: "#111827", pairs: ["Fz-Cz", "Cz-Pz"] },
+];
+const individualGroup = { id: "individual", name: "Individual readings", color: "#176b59" };
+const individualSubgroups = [
+  { id: "individual-right", name: "Right hemisphere", color: "#d13d3d" },
+  { id: "individual-left", name: "Left hemisphere", color: "#2859b8" },
+  { id: "individual-center", name: "Midline", color: "#111827" },
+  { id: "individual-other", name: "Other / auxiliary", color: "#176b59" },
+];
+
+function electrodeName(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/^EEG/, "")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function findSourceSignal(signals, electrode) {
+  const target = electrodeName(electrode);
+  const pattern = new RegExp(`^${target}(?:REF|REFERENCE|AVG|A1|A2|M1|M2|LE|RE|GND)?$`, "i");
+  return signals.find((signal) => pattern.test(electrodeName(signal.label)));
+}
+
+function isBipolarLabel(label) {
+  const compact = electrodeName(label);
+  return calculatedGroups.some((group) => group.pairs.some((pair) => compact === electrodeName(pair)));
+}
+
+function individualColor(label) {
+  const compact = electrodeName(label);
+  const electrode = compact.match(/^(?:FP[12]|[FTCP][1-8]|O[12]|[A-Z]Z)/)?.[0] || compact;
+  if (/Z$/.test(electrode)) return "#111827";
+  if (/(FP2|[FTCP][2468]|O2)$/.test(electrode)) return "#d13d3d";
+  if (/(FP1|[FTCP][1357]|O1)$/.test(electrode)) return "#2859b8";
+  return "#176b59";
+}
+
+function individualSubgroup(label) {
+  const color = individualColor(label);
+  return individualSubgroups.find((group) => group.color === color) || individualSubgroups[3];
+}
+
+function buildChannelDefinitions(signals) {
+  const usable = signals.filter((signal) => signal.samplesPerRecord > 0 && !/annotation/i.test(signal.label));
+  const definitions = [];
+  calculatedGroups.forEach((group) => {
+    group.pairs.forEach((label) => {
+      const [leftName, rightName] = label.split("-");
+      const left = findSourceSignal(usable, leftName);
+      const right = findSourceSignal(usable, rightName);
+      if (!left || !right) return;
+      definitions.push({ id: `calculated:${label}`, kind: "calculated", label, groupId: group.id, groupName: group.name, color: group.color, left, right });
+    });
+  });
+  usable.filter((signal) => !isBipolarLabel(signal.label)).forEach((signal) => {
+    const subgroup = individualSubgroup(signal.label);
+    definitions.push({ id: `individual:${signal.index}`, kind: "individual", label: signal.label, groupId: subgroup.id, groupName: subgroup.name, color: subgroup.color, signal });
+  });
+  return definitions;
+}
+
+function selectedChannelDefinitions() {
+  const selected = new Set(state.channels);
+  return state.channelDefinitions.filter((channel) => selected.has(channel.id));
+}
 
 // const API_BASE_URL = "https://fyp-api.azutoro.com";
 const API_BASE_URL =
@@ -264,6 +339,40 @@ async function readSignalWindow(signal, start, duration, token) {
   }
   return { times, values };
 }
+
+function interpolateValue(times, values, target) {
+  if (!values.length) return 0;
+  if (target <= times[0]) return values[0];
+  const last = times.length - 1;
+  if (target >= times[last]) return values[last];
+  let low = 0;
+  let high = last;
+  while (low + 1 < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (times[middle] <= target) low = middle;
+    else high = middle;
+  }
+  const span = times[high] - times[low] || 1;
+  const ratio = (target - times[low]) / span;
+  return values[low] + (values[high] - values[low]) * ratio;
+}
+
+async function readChannelWindow(channel, start, duration, token) {
+  if (channel.kind === "individual") {
+    return readSignalWindow(channel.signal, start, duration, token);
+  }
+  const [left, right] = await Promise.all([
+    readSignalWindow(channel.left, start, duration, token),
+    readSignalWindow(channel.right, start, duration, token),
+  ]);
+  if (!left || !right || token !== state.readToken) return null;
+  return {
+    times: left.times,
+    values: left.values.map((value, index) =>
+      value - interpolateValue(right.times, right.values, left.times[index]),
+    ),
+  };
+}
 function fmt(seconds, ms = false) {
   seconds = Math.max(0, seconds || 0);
   const h = Math.floor(seconds / 3600),
@@ -273,6 +382,23 @@ function fmt(seconds, ms = false) {
       ? `.${String(Math.floor((seconds % 1) * 1000)).padStart(3, "0")}`
       : "";
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}${tail}`;
+}
+
+function getTimeTickStep(windowSeconds, plotWidth) {
+  const targetTicks = Math.max(2, Math.floor(plotWidth / 85));
+  const roughStep = windowSeconds / targetTicks;
+  const magnitude = 10 ** Math.floor(Math.log10(Math.max(roughStep, 1)));
+  const normalized = roughStep / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return nice * magnitude;
+}
+
+function getDisplayGain(channelCount) {
+  const configured = Math.min(4, Math.max(0.5, Number(state.gain) || 1));
+  // Keep sparse and dense views from becoming visually exaggerated. The
+  // normal 8–20 channel range keeps the user's selected gain unchanged.
+  if (channelCount < 8 || channelCount > 20) return Math.min(configured, 1);
+  return configured;
 }
 function getPatientId(patientField) {
   if (!patientField) return null;
@@ -571,12 +697,13 @@ async function openFile(file, restoredState = null, analysisSourceUrl = null) {
     reportButton.textContent = "Analysing EEG...";
     state.start = 0;
     state.selection = null;
-    const usable = state.edf.signals.filter(
-      (s) => s.samplesPerRecord > 0 && !/annotation/i.test(s.label),
-    );
-    state.channels = usable
-      .slice(0, Math.min(24, usable.length))
-      .map((s) => s.index);
+    state.openChannelGroups = new Set();
+    state.channelDefinitions = buildChannelDefinitions(state.edf.signals);
+    // Calculated bipolar channels are the default montage. Individual source
+    // readings remain available in the checklist but start disabled.
+    state.channels = state.channelDefinitions
+      .filter((channel) => channel.kind === "calculated")
+      .map((channel) => channel.id);
     if (restoredState) {
       restoreRecordingState(restoredState);
     } else {
@@ -623,7 +750,7 @@ async function openFile(file, restoredState = null, analysisSourceUrl = null) {
       testId ? `Test ID: ${testId}` : null
     ].filter(Boolean);
     const details = [
-      `${usable.length}\u00A0channels`,
+      `${state.channelDefinitions.length}\u00A0channels`,
       fmt(state.edf.duration),
       `${(file.size / 1073741824).toFixed(2)}\u00A0GB`
     ];
@@ -655,25 +782,87 @@ function renderChannelList(filter = "") {
   const box = $("#channelList"),
     q = filter.toLowerCase();
   box.innerHTML = "";
-  state.edf.signals
-    .filter(
-      (s) =>
-        s.samplesPerRecord &&
-        !/annotation/i.test(s.label) &&
-        s.label.toLowerCase().includes(q),
-    )
-    .forEach((s) => {
-      const label = document.createElement("label");
-      label.className = "channel";
-      label.innerHTML = `<input type="checkbox" ${state.channels.includes(s.index) ? "checked" : ""}><span class="channel-name" title="${s.label}">${s.label}</span><span class="channel-rate">${s.sampleRate} Hz</span>`;
-      label.querySelector("input").onchange = (e) => {
-        state.channels = e.target.checked
-          ? [...state.channels, s.index]
-          : state.channels.filter((x) => x !== s.index);
-        render();
-      };
-      box.append(label);
-    });
+  const matching = state.channelDefinitions.filter((channel) => channel.label.toLowerCase().includes(q));
+  const selected = new Set(state.channels);
+  const setGroupSelection = (channels, enabled) => {
+    const ids = new Set(channels.map((channel) => channel.id));
+    if (enabled) ids.forEach((id) => selected.add(id));
+    else ids.forEach((id) => selected.delete(id));
+    state.channels = state.channelDefinitions.filter((channel) => selected.has(channel.id)).map((channel) => channel.id);
+    render();
+  };
+  const addSummary = (details, group, channels, level = 0) => {
+    const summary = document.createElement("summary");
+    summary.className = `channel-group-heading level-${level}`;
+    summary.style.setProperty("--channel-color", group.color);
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "channel-group-checkbox";
+    checkbox.disabled = channels.length === 0;
+    const checkedCount = channels.filter((channel) => selected.has(channel.id)).length;
+    checkbox.checked = channels.length > 0 && checkedCount === channels.length;
+    checkbox.indeterminate = checkedCount > 0 && checkedCount < channels.length;
+    checkbox.onclick = (event) => event.stopPropagation();
+    checkbox.onchange = (event) => setGroupSelection(channels, event.target.checked);
+    const text = document.createElement("span");
+    text.textContent = `${group.name} (${channels.length})`;
+    summary.append(checkbox, text);
+    details.append(summary);
+  };
+  const configureDetails = (details, groupId) => {
+    details.className = "channel-group";
+    details.open = Boolean(q) || state.openChannelGroups.has(groupId);
+    details.ontoggle = () => {
+      if (details.open) state.openChannelGroups.add(groupId);
+      else state.openChannelGroups.delete(groupId);
+    };
+  };
+  const addChannel = (details, channel) => {
+    const label = document.createElement("label");
+    label.className = "channel";
+    label.style.setProperty("--channel-color", channel.color);
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selected.has(channel.id);
+    const swatch = document.createElement("span");
+    swatch.className = "channel-swatch";
+    swatch.setAttribute("aria-hidden", "true");
+    const name = document.createElement("span");
+    name.className = "channel-name";
+    name.title = channel.kind === "calculated"
+      ? `${channel.label}: ${channel.left.label} − ${channel.right.label}`
+      : channel.label;
+    name.textContent = channel.label;
+    const rate = document.createElement("span");
+    rate.className = "channel-rate";
+    rate.textContent = channel.kind === "calculated"
+      ? `${channel.left.sampleRate} Hz`
+      : `${channel.signal.sampleRate} Hz`;
+    label.append(checkbox, swatch, name, rate);
+    checkbox.onchange = (event) => setGroupSelection([channel], event.target.checked);
+    details.append(label);
+  };
+  calculatedGroups.forEach((group) => {
+    const channels = matching.filter((channel) => channel.groupId === group.id);
+    const details = document.createElement("details");
+    configureDetails(details, group.id);
+    addSummary(details, group, channels);
+    channels.forEach((channel) => addChannel(details, channel));
+    box.append(details);
+  });
+  const individualDetails = document.createElement("details");
+  const individualChannels = matching.filter((channel) => channel.kind === "individual");
+  configureDetails(individualDetails, individualGroup.id);
+  addSummary(individualDetails, individualGroup, individualChannels);
+  individualSubgroups.forEach((group) => {
+    const channels = individualChannels.filter((channel) => channel.groupId === group.id);
+    const details = document.createElement("details");
+    configureDetails(details, group.id);
+    addSummary(details, group, channels, 1);
+    channels.forEach((channel) => addChannel(details, channel));
+    individualDetails.append(details);
+  });
+  box.append(individualDetails);
 }
 async function render() {
   if (!state.edf) return;
@@ -689,10 +878,10 @@ async function render() {
       ? 0
       : Math.round((state.start / (state.edf.duration - state.window)) * 1000);
   clearSelection();
-  const signals = state.channels.map((i) => state.edf.signals[i]);
+  const channels = selectedChannelDefinitions();
   try {
     const data = await Promise.all(
-      signals.map((s) => readSignalWindow(s, state.start, state.window, token)),
+      channels.map((channel) => readChannelWindow(channel, state.start, state.window, token)),
     );
     if (token !== state.readToken) return;
     state.data = data;
@@ -703,18 +892,27 @@ async function render() {
 }
 function draw() {
   const canvas = $("#eegCanvas"),
-    rect = canvas.getBoundingClientRect(),
+    plotWrap = $("#plotWrap"),
+    viewport = plotWrap.getBoundingClientRect(),
+    plotWidth = plotWrap.clientWidth || viewport.width,
+    visibleChannels = selectedChannelDefinitions(),
+    top = 18,
+    bottom = 28,
+    minimumRowHeight = visibleChannels.length > 20 ? 30 : 0,
+    canvasHeight = Math.max(
+      viewport.height,
+      top + bottom + visibleChannels.length * minimumRowHeight,
+    ),
     dpr = devicePixelRatio || 1;
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  canvas.style.height = `${canvasHeight}px`;
+  canvas.width = plotWidth * dpr;
+  canvas.height = canvasHeight * dpr;
   const c = canvas.getContext("2d");
   c.scale(dpr, dpr);
-  const w = rect.width,
-    h = rect.height,
+  const w = plotWidth,
+    h = canvasHeight,
     left = 72,
-    top = 18,
     right = 12,
-    bottom = 28,
     pw = w - left - right,
     ph = h - top - bottom;
   c.fillStyle = "#fbfcfa";
@@ -723,7 +921,8 @@ function draw() {
   c.textAlign = "center";
   c.strokeStyle = "#e4eae7";
   c.lineWidth = 1;
-  for (let sec = 0; sec <= state.window; sec++) {
+  const timeTickStep = getTimeTickStep(state.window, pw);
+  for (let sec = 0; sec <= state.window + 1e-9; sec += timeTickStep) {
     const x = left + (sec / state.window) * pw;
     c.beginPath();
     c.moveTo(x, top);
@@ -739,9 +938,17 @@ function draw() {
     return;
   }
   const row = ph / state.data.length;
+  const displayGain = getDisplayGain(visibleChannels.length);
   state.data.forEach((d, i) => {
-    const sig = state.edf.signals[state.channels[i]],
-      mid = top + row * (i + 0.5);
+    const channel = visibleChannels[i];
+    const firstInGroup = i === 0 || visibleChannels[i - 1].groupId !== channel.groupId;
+    const mid = top + row * (i + 0.5) + (firstInGroup ? 4 : 0);
+    if (firstInGroup) {
+      c.fillStyle = channel.color;
+      c.textAlign = "left";
+      c.font = "8px JetBrains Mono";
+      c.fillText(channel.groupName.toUpperCase(), left, top + row * i + 9);
+    }
     c.strokeStyle = "#dce4e0";
     c.beginPath();
     c.moveTo(left, mid);
@@ -750,14 +957,17 @@ function draw() {
     c.fillStyle = "#40534f";
     c.textAlign = "right";
     c.font = "10px JetBrains Mono";
-    c.fillText(sig.label, left - 8, mid + 3);
+    c.fillText(channel.label, left - 8, mid + 3);
+    c.fillStyle = channel.color;
+    c.fillRect(left - 4, mid - 5, 3, 10);
     if (!d?.values.length) return;
     const sorted = [...d.values].sort((a, b) => a - b),
       p05 = sorted[Math.floor(sorted.length * 0.05)],
       p95 = sorted[Math.floor(sorted.length * 0.95)],
-      amp = Math.max(Math.abs(p95 - p05) / 2, 1e-6) / state.gain,
+      amp = Math.max(Math.abs(p95 - p05) / 2, 1e-6) / displayGain,
+      traceHalfHeight = Math.min(row * 0.35, 30),
       center = (p05 + p95) / 2;
-    c.strokeStyle = "#176b59";
+    c.strokeStyle = channel.color;
     c.lineWidth = 1;
     c.beginPath();
     let lastX = -1,
@@ -767,8 +977,8 @@ function draw() {
         y =
           mid -
           Math.max(
-            -row * 0.43,
-            Math.min(row * 0.43, ((d.values[j] - center) / amp) * row * 0.35),
+            -traceHalfHeight,
+            Math.min(traceHalfHeight, ((d.values[j] - center) / amp) * traceHalfHeight),
           );
       if (x - lastX < 0.6 && j < d.values.length - 1) {
         lastY = y;
@@ -1088,7 +1298,7 @@ function openAnnotationDialog(annotation = null) {
   $("#annotationNotes").value = annotation?.notes || "";
   $("#annotationChannels").value = (
     annotation?.channels ||
-    state.channels.map((i) => state.edf.signals[i].label)
+    selectedChannelDefinitions().map((channel) => channel.label)
   ).join(", ");
   $("#annotationDialog").showModal();
 }
@@ -1125,12 +1335,9 @@ $("#scrubber").oninput = (e) => {
 };
 $("#newAnnotation").onclick = () => openAnnotationDialog();
 $("#toggleAll").onclick = () => {
-  const usable = state.edf.signals.filter(
-    (s) => s.samplesPerRecord && !/annotation/i.test(s.label),
-  );
   state.channels = state.channels.length
     ? []
-    : usable.slice(0, 24).map((s) => s.index);
+    : state.channelDefinitions.map((channel) => channel.id);
   renderChannelList($("#channelSearch").value);
   render();
 };
@@ -1355,6 +1562,15 @@ $("#annotationInput").onchange = async (e) => {
   }
 };
 window.onresize = () => state.edf && draw();
+// The viewer can resize when its parent layout/sidebar changes without a
+// browser window resize event. Redraw from the plot container so the canvas
+// always matches the available height and width.
+const plotResizeObserver = typeof ResizeObserver === "undefined"
+  ? null
+  : new ResizeObserver(() => {
+      if (state.edf) requestAnimationFrame(draw);
+    });
+plotResizeObserver?.observe($("#plotWrap"));
 document.addEventListener("keydown", (e) => {
   if (!state.edf || $("#annotationDialog").open) return;
   if (e.key === "ArrowLeft") {

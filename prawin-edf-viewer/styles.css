@@ -250,8 +250,9 @@ body {
 }
 .workspace {
   display: grid;
-  grid-template-columns: var(--sidebar) minmax(420px, 1fr) var(--notes);
+  grid-template-columns: var(--sidebar) minmax(0, 1fr) var(--notes);
   height: calc(100vh - 72px);
+  min-height: 0;
 }
 .sidebar,
 .annotations-panel {
@@ -310,6 +311,50 @@ body {
   overflow: auto;
   min-height: 0;
 }
+.channel-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0 2px;
+  padding: 5px 4px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--channel-color, var(--muted));
+  font: 600 9px "JetBrains Mono";
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.channel-group-heading.level-1 {
+  margin-left: 8px;
+  font-size: 8px;
+}
+.channel-group-checkbox {
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--channel-color, var(--green));
+}
+.channel-group {
+  border-bottom: 1px solid #eef1ef;
+}
+.channel-group > summary {
+  cursor: pointer;
+  list-style-position: outside;
+  user-select: none;
+}
+.channel-group > summary::marker {
+  color: var(--channel-color, var(--muted));
+}
+.channel-group[open] > summary {
+  margin-bottom: 2px;
+}
+.channel-group .channel {
+  padding-left: 16px;
+}
+.channel-group .channel-group .channel {
+  padding-left: 28px;
+}
+.channel-group-heading:first-child {
+  margin-top: 0;
+}
 .channel {
   display: flex;
   align-items: center;
@@ -320,6 +365,14 @@ body {
 }
 .channel input {
   accent-color: var(--green);
+}
+.channel-swatch {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: var(--channel-color, var(--green));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--channel-color, var(--green)) 18%, transparent);
 }
 .channel-name {
   font: 11px "JetBrains Mono";
@@ -336,6 +389,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 .toolbar {
   height: 60px;
@@ -345,6 +399,8 @@ body {
   align-items: center;
   padding: 0 14px;
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 .transport {
   display: flex;
@@ -386,7 +442,8 @@ body {
   min-height: 0;
   background: #fbfcfa;
   cursor: crosshair;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 #eegCanvas {
   display: block;
@@ -677,6 +734,24 @@ dialog textarea {
     padding: 7px 8px;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+}
+@media (max-width: 1100px) {
+  /* Keep the primary viewer actions visible when the centre column narrows. */
+  .toolbar .control {
+    display: none;
+  }
+  .toolbar-spacer {
+    min-width: 0;
+  }
+}
+@media (max-width: 900px) {
+  .time-readout {
+    display: none;
+  }
+  .toolbar {
+    gap: 6px;
+    padding: 0 8px;
   }
 }
 @media (max-width: 1000px) {

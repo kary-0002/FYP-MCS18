@@ -14,7 +14,6 @@ body { background: var(--paper); }
 .upload-panel { width: min(620px, 100%); border: 1px dashed var(--line); background: var(--white); padding: 48px 36px; text-align: center; }
 .empty-state h1 { margin: 10px 0 14px; font-size: 34px; letter-spacing: -1px; }
 .signal-icon { margin: 0 auto 18px; }
-.workspace { height: 100vh; }
 .sidebar, .annotations-panel, .toolbar, .timeline { background: var(--white); }
 .recording-meta { margin: -4px 0 12px; color: var(--muted); font: 10px/1.5 'JetBrains Mono', monospace; overflow-wrap: anywhere; white-space: pre-line; }
 .button, .icon-button, .search, .control select, .annotation, dialog, dialog select, dialog input, dialog textarea, .range-card, .count { border-radius: 0; }
