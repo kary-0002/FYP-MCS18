@@ -1010,14 +1010,25 @@ function drawAnnotations(c, left, top, pw, ph) {
           ((Math.min(a.endSec, state.start + state.window) - state.start) /
             state.window) *
             pw;
-      c.fillStyle = (colors[a.label] || colors.Other) + "25";
-      c.fillRect(x1, top, Math.max(2, x2 - x1), ph);
-      c.fillStyle = colors[a.label] || colors.Other;
-      c.fillRect(x1, top, 3, ph);
+      const color = colors[a.label] || colors.Other;
+      const width = Math.max(2, x2 - x1);
+
       c.font = "9px DM Sans";
       c.textAlign = "left";
-      const displayLabel = a.origin === "automated" ? "Seizure candidate" : a.label;
-      c.fillText(displayLabel, x1 + 5, top + 11);
+
+      const bandY = 2;
+      const bandHeight = 14;
+
+      c.fillStyle = color + "30";
+      c.fillRect(x1, bandY, width, bandHeight);
+
+      c.fillStyle = color;
+      c.fillRect(x1, bandY, 3, bandHeight);
+
+      const displayLabel =
+        a.origin === "automated" ? "Seizure candidate" : a.label;
+
+      c.fillText(displayLabel, x1 + 5, bandY + 10);
     });
 }
 function clearSelection() {
