@@ -1477,6 +1477,7 @@ $("#generateReport").onclick = async () => {
     formData.append("seizure_results_json", JSON.stringify(buildReportSeizureDetection()));
     formData.append("annotation_results_json", JSON.stringify(annotationResults));
     formData.append("seizure_detection_status", state.seizureDetectionStatus);
+    formData.append("recording_metadata_json", JSON.stringify(state.recordingMetadata ?? {}));
     const response = await fetch(`${API_BASE_URL}/report`, {
       method: "POST",
       body: formData,

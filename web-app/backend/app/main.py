@@ -394,7 +394,8 @@ async def post_generate_report(
     session_id: str = Form(...),
     seizure_results_json: str = Form(...),
     annotation_results_json: str = Form(...),
-    seizure_detection_status: str = Form(...)
+    seizure_detection_status: str = Form(...),
+    recording_metadata_json: str = Form("{}")
 ):
     session = ANALYSIS_SESSIONS.get(session_id)
     if session is None:
@@ -411,11 +412,25 @@ async def post_generate_report(
     try:
         seizure_results = json.loads(seizure_results_json)
         annotation_results = json.loads(annotation_results_json)
+        viewer_recording_metadata = json.loads(recording_metadata_json)
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=400,
             detail="Invalid seizure or annotation JSON."
         )
+
+    viewer_nicolet_metadata = (
+        viewer_recording_metadata.get("nicolet")
+        if isinstance(viewer_recording_metadata, dict)
+        else None
+    )
+
+    if viewer_nicolet_metadata:
+        session["nicolet_metadata"] = viewer_nicolet_metadata
+        session["recording_metadata"] = {
+            **(session["recording_metadata"] or {}),
+            "nicolet": viewer_nicolet_metadata
+        }
 
     try:
         progress_callback = begin_analysis_progress(session_id, "report")
@@ -466,6 +481,8 @@ async def post_generate_report(
     except Exception as exc:
         update_analysis_progress(session_id, "report", None, f"Report generation failed: {exc}", "failed")
         raise HTTPException(status_code=500, detail=str(exc))
+
+    
 
 
 @app.get("/results/{session_id}")
