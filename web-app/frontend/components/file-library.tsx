@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import * as tus from "tus-js-client";
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, RefreshCw, Search, Trash2, Upload, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getApiBaseUrl } from "@/lib/api-url";
 import { PatientAssignmentDialog, type PatientSummary } from "@/components/patient-assignment-dialog";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
 import {
@@ -92,16 +93,6 @@ function formatAddedDate(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
-}
-
-function getApiBaseUrl() {
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-  ) {
-    return "http://127.0.0.1:8000";
-  }
-  return "https://fyp-api.azutoro.com";
 }
 
 export function FileLibrary() {

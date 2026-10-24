@@ -7,18 +7,9 @@ import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { PatientAssignmentDialog, type PatientSummary } from "@/components/patient-assignment-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { getApiBaseUrl } from "@/lib/api-url";
 import { FILE_BUCKET, getRecordingPathsFromEdfPath,buildRecordingPaths, MAX_EEG_FILE_BYTES } from "@/lib/files";
 import * as tus from "tus-js-client";
-
-function getApiBaseUrl() {
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-  ) {
-    return "http://127.0.0.1:8000";
-  }
-  return "https://fyp-api.azutoro.com";
-}
 
 async function uploadResumableFile(file: File, storagePath: string, accessToken: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -699,7 +690,7 @@ function EDFReaderContent() {
           ref={frameRef}
           src="/neuroscope/"
           title="NeuroScope EEG viewer and annotator"
-          className="h-[calc(100vh-10rem)] min-h-175 w-full border border-border bg-white"
+          className="h-[calc(100vh-10rem)] min-h-175 w-full overscroll-contain border border-border bg-white"
           onLoad={handleFrameLoad}
         />
         {report && reportUrl && (

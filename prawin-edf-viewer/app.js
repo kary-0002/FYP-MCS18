@@ -120,12 +120,16 @@ function selectedChannelDefinitions() {
   return state.channelDefinitions.filter((channel) => selected.has(channel.id));
 }
 
-// const API_BASE_URL = "https://fyp-api.azutoro.com";
 const API_BASE_URL =
-  window.location.hostname === "localhost" ||
+  window.NEUROSCOPE_CONFIG?.apiBaseUrl ||
+  (window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1"
     ? "http://127.0.0.1:8000"
-    : "https://fyp-api.azutoro.com";
+    : null);
+
+if (!API_BASE_URL) {
+  throw new Error("Configure the NeuroScope analysis API URL before loading the viewer.");
+}
 
 
 async function createAnalysisSession(file) {

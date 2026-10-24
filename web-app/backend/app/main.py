@@ -27,11 +27,15 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_HOST = urlparse(SUPABASE_URL).hostname if SUPABASE_URL else None
 app = FastAPI()
 
-# Setting up CORS middleware
+configured_frontend_origins = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv("FRONTEND_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://fyp.azutoro.com",
+    allow_origins=configured_frontend_origins + [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",
