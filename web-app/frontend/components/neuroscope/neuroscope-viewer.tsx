@@ -28,6 +28,11 @@ import {
   type AnalysisProgress,
 } from "@/lib/neuroscope/api";
 import type { Annotation, Channel, Recording } from "@/lib/neuroscope/types";
+import {
+  identifyFile,
+  sameFileIdentity,
+  type FileIdentity,
+} from "@/lib/neuroscope/file-identity";
 
 export type SavedState = {
   annotations?: Annotation[];
@@ -45,6 +50,12 @@ export type SavedState = {
     windowSize?: number;
     start?: number;
     gain?: number;
+  };
+  recording?: {
+    fileIdentity?: FileIdentity;
+    fileName?: string | null;
+    fileSize?: number | null;
+    lastModified?: string | null;
   };
 };
 export type NeuroScopeViewerProps = {
@@ -144,6 +155,7 @@ export const NeuroScopeViewer = forwardRef<
   const rootRef = useRef<HTMLDivElement>(null),
     fileRef = useRef<File | null>(null),
     recordingRef = useRef<Recording | null>(null),
+    fileIdentityRef = useRef<FileIdentity | null>(null),
     initialFileHandled = useRef<File | null>(null);
   const log = useCallback(
     (message: string, status = "info") =>
@@ -161,6 +173,7 @@ export const NeuroScopeViewer = forwardRef<
       initialLoad = false,
     ) => {
       setIsOpening(true);
+      fileIdentityRef.current = null;
       setLoadingFileName(input.name);
       setLoadingMessage(
         /\.e$/i.test(input.name)
@@ -177,8 +190,21 @@ export const NeuroScopeViewer = forwardRef<
           uploadResult = await onPrepareNicolet(input);
           sessionId = uploadResult.session_id;
           setLoadingMessage("Reading converted EDF file");
-          actual = await getSessionFile(sessionId, uploadResult.edf_filename);
+          actual = await getSessionFile(sessionId!, uploadResult.edf_filename);
         }
+        setLoadingMessage("Reading EDF file");
+        setLoadingMessage("Verifying EDF file identity");
+        const computedIdentity = await identifyFile(actual);
+        const savedIdentity = (saved as SavedState | null)?.recording?.fileIdentity;
+        const identity =
+          savedIdentity &&
+          sameFileIdentity(savedIdentity, {
+            ...computedIdentity,
+            lastModified: savedIdentity.lastModified,
+          })
+            ? { ...computedIdentity, lastModified: savedIdentity.lastModified }
+            : computedIdentity;
+        fileIdentityRef.current = identity;
         setLoadingMessage("Reading EDF file");
         const parsed = await parseEDF(actual),
           defs = makeChannels(parsed.signals);
@@ -262,10 +288,13 @@ export const NeuroScopeViewer = forwardRef<
       exportedAt: new Date().toISOString(),
       recording: {
         fileName: fileRef.current?.name || null,
-        fileSize: fileRef.current?.size || null,
-        lastModified: fileRef.current
-          ? new Date(fileRef.current.lastModified).toISOString()
-          : null,
+        fileSize: fileIdentityRef.current?.size ?? fileRef.current?.size ?? null,
+        lastModified: fileIdentityRef.current
+          ? new Date(fileIdentityRef.current.lastModified).toISOString()
+          : fileRef.current
+            ? new Date(fileRef.current.lastModified).toISOString()
+            : null,
+        fileIdentity: fileIdentityRef.current,
         durationSec: recordingRef.current?.duration || null,
         startDate: recordingRef.current?.startDate || null,
         startTime: recordingRef.current?.startTime || null,
@@ -615,14 +644,16 @@ export const NeuroScopeViewer = forwardRef<
         seizureDetection?:
           SavedState["seizureDetection"] | Record<string, unknown>;
       };
-      if (
-        !Array.isArray(v.annotations) ||
-        ((v as any).recording?.fileName &&
-          (v as any).recording.fileName !== file.name)
-      )
+      if (!Array.isArray(v.annotations))
+        throw Error("Recording state does not contain valid annotations.");
+      if (!fileIdentityRef.current)
+        throw Error("Could not verify the currently open EEG file.");
+      if (!v.recording?.fileIdentity)
         throw Error(
-          "This recording state is invalid or belongs to a different EEG file.",
+          "This recording state predates file identity verification. Export it again from the original recording before importing it.",
         );
+      if (!sameFileIdentity(v.recording.fileIdentity, fileIdentityRef.current))
+        throw Error("This recording state belongs to a different EEG file.");
       setAnnotations(v.annotations);
       setMetadata(v.metadata || null);
       const legacyDetection = v.seizureDetection as
@@ -688,7 +719,7 @@ export const NeuroScopeViewer = forwardRef<
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [recording, annotationDialogOpen, range, start, windowSize]);
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !recording) return;
     const timer = setInterval(() => {
       const end = Math.max(0, recording.duration - windowSize);
       const next = start + windowSize * 0.2;

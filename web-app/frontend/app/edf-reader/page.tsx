@@ -12,10 +12,18 @@ import { UserRound } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Button } from "@/components/ui/button";
-import { PatientAssignmentDialog, type PatientSummary } from "@/components/patient-assignment-dialog";
+import {
+  PatientAssignmentDialog,
+  type PatientSummary,
+} from "@/components/patient-assignment-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { getApiBaseUrl } from "@/lib/api-url";
-import { FILE_BUCKET, getRecordingPathsFromEdfPath,buildRecordingPaths, MAX_EEG_FILE_BYTES } from "@/lib/files";
+import {
+  FILE_BUCKET,
+  getRecordingPathsFromEdfPath,
+  buildRecordingPaths,
+  MAX_EEG_FILE_BYTES,
+} from "@/lib/files";
 import * as tus from "tus-js-client";
 import {
   NeuroScopeViewer,
@@ -26,7 +34,11 @@ import {
   type NeuroScopeBundle,
 } from "@/components/neuroscope/neuroscope-session";
 
-async function uploadResumableFile(file: File, storagePath: string, accessToken: string) {
+async function uploadResumableFile(
+  file: File,
+  storagePath: string,
+  accessToken: string,
+) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
   const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
@@ -42,7 +54,7 @@ async function uploadResumableFile(file: File, storagePath: string, accessToken:
         bucketName: FILE_BUCKET,
         objectName: storagePath,
         contentType: "application/octet-stream",
-        cacheControl: "3600"
+        cacheControl: "3600",
       },
       chunkSize: 6 * 1024 * 1024,
       onError(error) {
@@ -50,7 +62,7 @@ async function uploadResumableFile(file: File, storagePath: string, accessToken:
       },
       onSuccess() {
         resolve();
-      }
+      },
     });
     upload.start();
   });
@@ -58,9 +70,13 @@ async function uploadResumableFile(file: File, storagePath: string, accessToken:
 
 async function waitForNicoletSourceJob(jobId: string) {
   for (let attempt = 0; attempt < 1800; attempt += 1) {
-    const response = await fetch(`${getApiBaseUrl()}/source-job/${encodeURIComponent(jobId)}`);
+    const response = await fetch(
+      `${getApiBaseUrl()}/source-job/${encodeURIComponent(jobId)}`,
+    );
     if (!response.ok) {
-      throw new Error((await response.text()) || "Could not check Nicolet conversion status.");
+      throw new Error(
+        (await response.text()) || "Could not check Nicolet conversion status.",
+      );
     }
     const result = await response.json();
     if (result.status === "completed") return result;
@@ -99,14 +115,14 @@ async function prepareNicoletSource(file: File) {
     if (signedError || !signedSource?.signedUrl) {
       throw signedError ?? new Error("Could not open uploaded Nicolet source.");
     }
-    const startResponse = await fetch(
-      `${getApiBaseUrl()}/open-saved-source`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: signedSource.signedUrl, filename: file.name }),
-      },
-    );
+    const startResponse = await fetch(`${getApiBaseUrl()}/open-saved-source`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: signedSource.signedUrl,
+        filename: file.name,
+      }),
+    });
     if (!startResponse.ok) {
       throw new Error(
         (await startResponse.text()) || "Could not start Nicolet conversion.",
@@ -142,7 +158,9 @@ function EDFReaderContent() {
     statePath: string | null;
     reportPath: string | null;
   } | null>(null);
-  const [savedFileProgress, setSavedFileProgress] = useState<number | null>(null);
+  const [savedFileProgress, setSavedFileProgress] = useState<number | null>(
+    null,
+  );
   const stateSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<{ blob: Blob; name: string } | null>(
@@ -161,7 +179,9 @@ function EDFReaderContent() {
     () => !!activeSession,
   );
   const [savingRecording, setSavingRecording] = useState(false);
-  const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null);
+  const [recordingSaveError, setRecordingSaveError] = useState<string | null>(
+    null,
+  );
   const [assignedPatient, setAssignedPatient] = useState<PatientSummary | null>(
     () => activeSession?.patient ?? null,
   );
@@ -171,7 +191,9 @@ function EDFReaderContent() {
   const latestReportBlobRef = useRef<Blob | null>(
     activeSession?.report?.blob ?? null,
   );
-  const activeRecordingFileRef = useRef<File | null>(activeSession?.file ?? null);
+  const activeRecordingFileRef = useRef<File | null>(
+    activeSession?.file ?? null,
+  );
   const saveInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -181,7 +203,9 @@ function EDFReaderContent() {
     }
     const url = URL.createObjectURL(report.blob);
     setReportUrl(url);
-    return () => { URL.revokeObjectURL(url); };
+    return () => {
+      URL.revokeObjectURL(url);
+    };
   }, [report]);
 
   useEffect(() => {
@@ -221,7 +245,8 @@ function EDFReaderContent() {
           .eq("kind", "edf")
           .single();
 
-        if (rowError || !row) throw rowError ?? new Error("EDF file not found.");
+        if (rowError || !row)
+          throw rowError ?? new Error("EDF file not found.");
         let linkedPatient: PatientSummary | null = null;
         if (row.patient_id) {
           const { data: patientRow, error: patientError } = await supabase
@@ -230,7 +255,10 @@ function EDFReaderContent() {
             .eq("id", row.patient_id)
             .maybeSingle();
           if (patientError) {
-            console.warn("Could not load assigned patient:", patientError.message);
+            console.warn(
+              "Could not load assigned patient:",
+              patientError.message,
+            );
           } else if (patientRow) {
             linkedPatient = patientRow as PatientSummary;
           }
@@ -244,8 +272,10 @@ function EDFReaderContent() {
           throw signedError ?? new Error("Could not open the saved EDF file.");
         }
         const fileResponse = await fetch(data.signedUrl);
-        if (!fileResponse.ok) throw new Error("Could not download the saved EDF file.");
-        const contentLength = Number(fileResponse.headers.get("content-length")) || 0;
+        if (!fileResponse.ok)
+          throw new Error("Could not download the saved EDF file.");
+        const contentLength =
+          Number(fileResponse.headers.get("content-length")) || 0;
         setSavedFileProgress(contentLength > 0 ? 0 : null);
         let fileBlob: Blob;
         if (fileResponse.body && contentLength > 0) {
@@ -258,7 +288,9 @@ function EDFReaderContent() {
             if (value) {
               chunks.push(value);
               received += value.byteLength;
-              setSavedFileProgress(Math.min(90, Math.round((received / contentLength) * 90)));
+              setSavedFileProgress(
+                Math.min(90, Math.round((received / contentLength) * 90)),
+              );
             }
           }
           fileBlob = new Blob(chunks, { type: "application/octet-stream" });
@@ -283,13 +315,20 @@ function EDFReaderContent() {
             } catch (err) {
               console.error("Could not parse recording state:", err);
             }
-          } else if (stateError && !stateError.message.toLowerCase().includes("not found")) {
+          } else if (
+            stateError &&
+            !stateError.message.toLowerCase().includes("not found")
+          ) {
             console.warn("Could not load recording state:", stateError.message);
           }
-          const { data: reportBlob, error: reportError } = await supabase.storage.from(FILE_BUCKET).download(paths.report);
+          const { data: reportBlob, error: reportError } =
+            await supabase.storage.from(FILE_BUCKET).download(paths.report);
           if (reportBlob) {
             restoredReport = reportBlob;
-          } else if (reportError && !reportError.message.toLowerCase().includes("not found")) {
+          } else if (
+            reportError &&
+            !reportError.message.toLowerCase().includes("not found")
+          ) {
             console.warn("Could not load latest report:", reportError.message);
           }
         }
@@ -299,14 +338,14 @@ function EDFReaderContent() {
               id: fileId!,
               edfPath: paths.edf,
               statePath: paths.state,
-              reportPath: paths.report
+              reportPath: paths.report,
             });
           }
           setReportOutOfDate(recordingState?.report?.outOfDate ?? false);
           if (restoredReport) {
             setReport({
               blob: restoredReport,
-              name: `${row.original_name.replace(/\.edf$/i, "")}_report.pdf`
+              name: `${row.original_name.replace(/\.edf$/i, "")}_report.pdf`,
             });
           }
           setAssignedPatient(linkedPatient);
@@ -316,19 +355,25 @@ function EDFReaderContent() {
             file: savedEdf,
             recordingState,
             statePath: paths?.state ?? null,
-            reportPath: paths?.report ?? null
+            reportPath: paths?.report ?? null,
           });
           setSavedFileProgress(100);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not open the saved EDF file.");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not open the saved EDF file.",
+          );
         }
       }
     }
 
     void prepareSavedFile();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [fileId]);
 
   const saveRecordingState = useCallback(
@@ -340,18 +385,23 @@ function EDFReaderContent() {
       }
       stateSaveTimerRef.current = setTimeout(async () => {
         try {
-          const blob = new Blob([JSON.stringify(recordingState, null, 2)], { type: "application/json" });
+          const blob = new Blob([JSON.stringify(recordingState, null, 2)], {
+            type: "application/json",
+          });
           const supabase = createClient();
           const { error: uploadError } = await supabase.storage
             .from(FILE_BUCKET)
-            .upload(statePath, blob, { contentType: "application/json", upsert: true});
+            .upload(statePath, blob, {
+              contentType: "application/json",
+              upsert: true,
+            });
           if (uploadError) throw uploadError;
         } catch (err) {
           console.error("Could not save recording state:", err);
         }
       }, 500);
     },
-    [savedBundle?.statePath, savedFile?.statePath]
+    [savedBundle?.statePath, savedFile?.statePath],
   );
 
   const saveLatestReport = useCallback(
@@ -363,11 +413,11 @@ function EDFReaderContent() {
         .from(FILE_BUCKET)
         .upload(reportPath, blob, {
           contentType: "application/pdf",
-          upsert: true
+          upsert: true,
         });
       if (error) throw error;
     },
-    [savedBundle?.reportPath, savedFile?.reportPath]
+    [savedBundle?.reportPath, savedFile?.reportPath],
   );
 
   const requestViewerSavePayload = useCallback(() => {
@@ -384,8 +434,13 @@ function EDFReaderContent() {
       setSavingRecording(true);
       try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
         if (!user || sessionError || !session?.access_token) {
           throw new Error("You must be signed in to use the EEG Viewer.");
         }
@@ -406,30 +461,39 @@ function EDFReaderContent() {
           if (duplicateError) throw duplicateError;
           const existing = existingRows?.[0];
           if (existing) {
-            router.replace(`/edf-reader?file=${encodeURIComponent(existing.id)}`);
+            router.replace(
+              `/edf-reader?file=${encodeURIComponent(existing.id)}`,
+            );
             return;
           }
         }
         // Existing recording: explicitly resync its mutable state/report.
         if (savedBundle && !forceNew) {
           const stateBlob = new Blob(
-            [JSON.stringify(latestRecordingStateRef.current ?? payload.state, null, 2)],
-            { type: "application/json" }
+            [
+              JSON.stringify(
+                latestRecordingStateRef.current ?? payload.state,
+                null,
+                2,
+              ),
+            ],
+            { type: "application/json" },
           );
           const { error: stateError } = await supabase.storage
             .from(FILE_BUCKET)
             .upload(savedBundle.statePath, stateBlob, {
               contentType: "application/json",
-              upsert: true
+              upsert: true,
             });
           if (stateError) throw stateError;
-          const reportBlob = latestReportBlobRef.current ?? report?.blob ?? null;
+          const reportBlob =
+            latestReportBlobRef.current ?? report?.blob ?? null;
           if (reportBlob) {
             const { error: reportError } = await supabase.storage
               .from(FILE_BUCKET)
               .upload(savedBundle.reportPath, reportBlob, {
                 contentType: "application/pdf",
-                upsert: true
+                upsert: true,
               });
             if (reportError) throw reportError;
           }
@@ -440,17 +504,21 @@ function EDFReaderContent() {
         const uploadedPaths: string[] = [];
         let bundleCreated = false;
         try {
-          await uploadResumableFile(payload.file, paths.edf, session.access_token);
+          await uploadResumableFile(
+            payload.file,
+            paths.edf,
+            session.access_token,
+          );
           uploadedPaths.push(paths.edf);
           const initialStateBlob = new Blob(
             [JSON.stringify(payload.state, null, 2)],
-            { type: "application/json" }
+            { type: "application/json" },
           );
           const { error: stateError } = await supabase.storage
             .from(FILE_BUCKET)
             .upload(paths.state, initialStateBlob, {
               contentType: "application/json",
-              upsert: false
+              upsert: false,
             });
           if (stateError) throw stateError;
           uploadedPaths.push(paths.state);
@@ -461,47 +529,45 @@ function EDFReaderContent() {
               kind: "edf",
               original_name: payload.file.name,
               storage_path: paths.edf,
-              size_bytes: payload.file.size
+              size_bytes: payload.file.size,
             })
             .select("id")
             .single();
           if (insertError || !row) {
-            throw (insertError ?? new Error("Could not create the My Files entry."));
+            throw (
+              insertError ?? new Error("Could not create the My Files entry.")
+            );
           }
           bundleCreated = true;
           const bundle = {
             id: row.id,
             edfPath: paths.edf,
             statePath: paths.state,
-            reportPath: paths.report
+            reportPath: paths.report,
           };
           setSavedBundle(bundle);
-          setSession((current) =>
-            current ? { ...current, bundle } : current,
-          );
+          setSession((current) => (current ? { ...current, bundle } : current));
           // Analysis may have changed while the EDF was uploading.
           const latestState = latestRecordingStateRef.current ?? payload.state;
           const latestStateBlob = new Blob(
             [JSON.stringify(latestState, null, 2)],
-            { type: "application/json" }
+            { type: "application/json" },
           );
-          const { error: latestStateError } =
-            await supabase.storage
-              .from(FILE_BUCKET)
-              .upload(paths.state, latestStateBlob, {
-                contentType: "application/json",
-                upsert: true
-              });
+          const { error: latestStateError } = await supabase.storage
+            .from(FILE_BUCKET)
+            .upload(paths.state, latestStateBlob, {
+              contentType: "application/json",
+              upsert: true,
+            });
           if (latestStateError) throw latestStateError;
           // A report may also have been generated during the upload.
           if (latestReportBlobRef.current) {
-            const { error: reportError } =
-              await supabase.storage
-                .from(FILE_BUCKET)
-                .upload(paths.report, latestReportBlobRef.current, {
-                  contentType: "application/pdf",
-                  upsert: true,
-                });
+            const { error: reportError } = await supabase.storage
+              .from(FILE_BUCKET)
+              .upload(paths.report, latestReportBlobRef.current, {
+                contentType: "application/pdf",
+                upsert: true,
+              });
             if (reportError) throw reportError;
           }
         } catch (err) {
@@ -515,13 +581,15 @@ function EDFReaderContent() {
           throw err;
         }
       } catch (err) {
-        setRecordingSaveError(err instanceof Error ? err.message : "Could not save this recording.");
+        setRecordingSaveError(
+          err instanceof Error ? err.message : "Could not save this recording.",
+        );
       } finally {
         saveInProgressRef.current = false;
         setSavingRecording(false);
       }
     },
-    [report, requestViewerSavePayload, router, savedBundle]
+    [report, requestViewerSavePayload, router, savedBundle],
   );
 
   const prepareNicolet = useCallback(
@@ -548,7 +616,9 @@ function EDFReaderContent() {
               : null,
         bundle: initialLoad ? (savedBundle ?? current?.bundle ?? null) : null,
         report: initialLoad ? (report ?? current?.report ?? null) : null,
-        patient: initialLoad ? (assignedPatient ?? current?.patient ?? null) : null,
+        patient: initialLoad
+          ? (assignedPatient ?? current?.patient ?? null)
+          : null,
       }));
       if (initialLoad) {
         if (!fileId && !savedBundle) {
@@ -567,7 +637,16 @@ function EDFReaderContent() {
       latestReportBlobRef.current = null;
       window.setTimeout(() => void saveViewerRecording(true), 0);
     },
-    [fileId, router, saveViewerRecording, savedFile, savedBundle, report, assignedPatient, setSession],
+    [
+      fileId,
+      router,
+      saveViewerRecording,
+      savedFile,
+      savedBundle,
+      report,
+      assignedPatient,
+      setSession,
+    ],
   );
   const handleRecordingStateChange = useCallback(
     (file: File, recordingState: unknown) => {
@@ -617,9 +696,7 @@ function EDFReaderContent() {
   const handlePatientAssignmentChange = useCallback(
     (patient: PatientSummary | null) => {
       setAssignedPatient(patient);
-      setSession((current) =>
-        current ? { ...current, patient } : current,
-      );
+      setSession((current) => (current ? { ...current, patient } : current));
     },
     [setSession],
   );
@@ -662,7 +739,11 @@ function EDFReaderContent() {
         {viewerHasRecording && (
           <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
             <span className="text-muted-foreground">
-              {savingRecording ? "Saving to My Files…" : fileId || savedBundle ? "Saved in My Files" : "Preparing to save…"}
+              {savingRecording
+                ? "Saving to My Files…"
+                : fileId || savedBundle
+                  ? "Saved in My Files"
+                  : "Preparing to save…"}
             </span>
             {assignmentFileId && !savingRecording && (
               <>
@@ -673,10 +754,16 @@ function EDFReaderContent() {
                     <button
                       type="button"
                       className="font-medium text-foreground hover:underline"
-                      onClick={() => router.push(`/patients/${encodeURIComponent(assignedPatient.id)}`)}
+                      onClick={() =>
+                        router.push(
+                          `/patients/${encodeURIComponent(assignedPatient.id)}`,
+                        )
+                      }
                       title="Open Patient Profile"
                     >
-                      {assignedPatient.name?.trim() || assignedPatient.patient_identifier || "Unnamed Patient"}
+                      {assignedPatient.name?.trim() ||
+                        assignedPatient.patient_identifier ||
+                        "Unnamed Patient"}
                     </button>
                   </span>
                 ) : (
@@ -691,8 +778,14 @@ function EDFReaderContent() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                      aria-label={assignedPatient ? "Change Patient Assignment" : "Assign Patient"}
-                      title={assignedPatient ? "Change Patient" : "Assign Patient"}
+                      aria-label={
+                        assignedPatient
+                          ? "Change Patient Assignment"
+                          : "Assign Patient"
+                      }
+                      title={
+                        assignedPatient ? "Change Patient" : "Assign Patient"
+                      }
                     >
                       <UserRound className="h-4 w-4" />
                     </Button>
@@ -703,7 +796,9 @@ function EDFReaderContent() {
             {recordingSaveError && (
               <Button
                 variant="outline"
-                onClick={() => void saveViewerRecording(!fileId && !savedBundle)}
+                onClick={() =>
+                  void saveViewerRecording(!fileId && !savedBundle)
+                }
               >
                 Retry Save
               </Button>
@@ -711,18 +806,39 @@ function EDFReaderContent() {
           </div>
         )}
         {recordingSaveError && (
-          <p className="mb-3 text-sm text-destructive">
-            {recordingSaveError}
-          </p>
+          <p className="mb-3 text-sm text-destructive">{recordingSaveError}</p>
         )}
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         {fileId && !savedFile ? (
-          <div className="flex h-[calc(100vh-10rem)] min-h-175 flex-col items-center justify-center gap-4 border border-border bg-card px-8 text-sm text-muted-foreground" aria-live="polite">
+          <div
+            className="flex h-[calc(100vh-10rem)] min-h-175 flex-col items-center justify-center gap-4 border border-border bg-card px-8 text-sm text-muted-foreground"
+            aria-live="polite"
+          >
             <span>Opening saved EEG recording…</span>
-            <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Loading EDF file" aria-valuemin={0} aria-valuemax={100} aria-valuenow={savedFileProgress ?? undefined}>
-              <div className={`h-full bg-primary transition-[width] duration-200 ${savedFileProgress === null ? "w-1/3 animate-pulse" : ""}`} style={savedFileProgress === null ? undefined : { width: `${savedFileProgress}%` }} />
+            <div
+              className="h-2 w-full max-w-md overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-label="Loading EDF file"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={savedFileProgress ?? undefined}
+            >
+              <div
+                className={`h-full bg-primary transition-[width] duration-200 ${savedFileProgress === null ? "w-1/3 animate-pulse" : ""}`}
+                style={
+                  savedFileProgress === null
+                    ? undefined
+                    : { width: `${savedFileProgress}%` }
+                }
+              />
             </div>
-            {savedFileProgress !== null && <span className="text-xs tabular-nums">{savedFileProgress < 90 ? `${savedFileProgress}% downloaded` : "Preparing recording…"}</span>}
+            {savedFileProgress !== null && (
+              <span className="text-xs tabular-nums">
+                {savedFileProgress < 90
+                  ? `${savedFileProgress}% downloaded`
+                  : "Preparing recording…"}
+              </span>
+            )}
           </div>
         ) : (
           <div className="neuroscope-host h-[calc(100vh-10rem)] min-h-175 w-full overflow-hidden border border-border bg-white overscroll-contain">
@@ -743,17 +859,18 @@ function EDFReaderContent() {
                 <div className="section-kicker">Latest report</div>
                 <h2 className="text-xl font-semibold">{report.name}</h2>
               </div>
-              <Button variant="outline" onClick={downloadReport}>Download PDF</Button>
+              <Button variant="outline" onClick={downloadReport}>
+                Download PDF
+              </Button>
             </div>
             {reportOutOfDate && (
               <div className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-                This report is out of date. Regenerate it to include the latest analysis results and annotations.
+                This report is out of date. Regenerate it to include the latest
+                analysis results and annotations.
               </div>
             )}
             {reportStatus && (
-              <p className="text-sm text-muted-foreground">
-                {reportStatus}
-              </p>
+              <p className="text-sm text-muted-foreground">{reportStatus}</p>
             )}
             <iframe
               src={reportUrl}
