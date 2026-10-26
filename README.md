@@ -1,66 +1,67 @@
-# MCS18 FYP: Web-based EEG Viewer, Annotator, and Feedback Recommendations
+# [MCS18 FYP] - SeizureAI: Web-based EEG Viewer, Annotator, and Feedback Recommendations
 
-## 👥 Team Members
+## 👥 Members
+**Core:**
+- Jason Yeap Kang Sheng [34277579]
+- Jota Nishimura [34303995]
+- Kristofer Astro Aryapradipta [34091971]
+- Prawin Raj [34506209]
 
-### **Core:**
-
-- Jason Yeap Kang Sheng (34277579)
-- Jota Nishimura (34303995)
-- Kristofer Astro Aryapradipta (34091971)
-- Prawin Raj (34506209)
-
-### **Supervisor(s):**
-
+**Supervisor:**
 - Dr. Jessie Leong Shu Min
-- Dr. Low Yin Yin
 
 ## 📝 Project Description:
-
-This Final Year project aims to develop a web-based platform to view and annotate EEG (electroencephalogram) files in `.edf` format as well as giving feedback recommendations using a pre-trained model based on the Siena EEG public dataset.
+This Final Year project aims to develop a web-based platform to view and annotate EEG (electroencephalogram) files in `.edf` / `.e` (Nicolet) format, as well as generating a report containing AI-assisted analysis and feedback recommendations using a pre-trained model based on the Siena EEG public dataset.
 
 ## 🚀 Features
+- View EEG recordings from `.edf` / `.e` (NicoletEEG) files in the browser
+- Annotate EEG signals and assign pre-defined labels
+- Report generation feature: Containing AI-assisted analysis, feedback recommendations, graphs, diagrams and summaries
+- Store `.edf` recordings and `.pdf` reports using Supabase-based database and built-in file management system
+- Patients profiling and management feature to assign EEG recordings to patients and gain insights through statistical analysis
 
-- View EEG recordings from `.edf` files in the browser
-- Annotate EEG signals
-- Store `.edf` recordings and `.pdf` reports per user (Supabase Auth + Storage)
-- Feedback recommendations from a pre-trained model (Siena EEG dataset)
+## 🤖 Models Used
+- [Tung EEG](https://github.com/tcs211/AI_EEEG_REPORT) (based on TUH EEG dataset), for Report Generation
+- [SeizureTransformer](https://github.com/keruiwu/SeizureTransformer), for Seizure Detection
+
 
 ## ⚙️ Technical Stack
 
-
 | Category       | Libraries / Frameworks                 |
 | -------------- | -------------------------------------- |
-| Frontend       | Next.js, React, TailwindCSS            |
-| Backend / data | Supabase (Auth, Postgres, Storage)     |
-| Model          | Python, pre-trained model on Siena EEG |
-| Deployment     | Frontend - Vercel                      |
+| Frontend       | Next.js, React                         |
+| Backend        | Supabase (Auth + File Storage), FastAPI (pre-trained models)     |
 
-
-FastAPI is not used in the current scope.
 
 ## 📦 Project Structure
 
 ```
 web-app/
-└─ frontend/          # Next.js app (viewer, annotator, auth)
-supabase/
-└─ schema.sql         # Auth-backed file metadata + storage policies
+├─ backend/                         # FastAPI analysis and report-generation service
+│  ├─ app/
+│  │  ├─ main.py                    # Analysis API routes and in-memory sessions/jobs
+│  │  ├─ seizure_detection.py       # Seizure detection pipeline
+│  │  ├─ nicolet_metadata.py        # Nicolet .e metadata extraction
+│  │  ├─ model.py                   # Model support
+│  │  ├─ official_seizure_transformer_model.pth
+│  │  └─ report_generation/
+│  │     ├─ *.py                    # EEG features, analysis, and PDF report generation
+│  │     └─ models/                 # Pre-trained report model weights
+│  ├─ pyproject.toml                # Python dependencies and project configuration
+│  └─ uv.lock                       # Locked Python dependencies
+│
+└─ frontend/                        # Next.js App Router application
+   ├─ app/                          # Pages and the Supabase OAuth callback route
+   ├─ components/
+   │  ├─ neuroscope/                # Native React EDF viewer, session state, and styles
+   │  └─ ui/                        # Shared UI components
+   ├─ hooks/                        # Shared React hooks
+   ├─ lib/
+   │  ├─ neuroscope/                # EDF parsing, API client, and file identity
+   │  └─ supabase/                  # Supabase browser, server, and middleware clients
+   ├─ public/                       # Static assets
+   ├─ styles/                       # Global styles
+   └─ types/                        # Type declarations
 ```
 
-## 🔐 Supabase Setup (Auth + Files)
-
-1. Create a Supabase project.
-2. **Authentication → Providers**
-  - Enable **Email** (email + password).
-  - Enable **Google**. In Google Cloud, create an OAuth client and set the redirect URI to `https://<project-ref>.supabase.co/auth/v1/callback`.
-  - In **Authentication → URL Configuration**, set **Site URL** to the deployed frontend URL, for example `https://your-app.vercel.app`, and add both `https://your-app.vercel.app/auth/callback` and `http://localhost:3000/auth/callback` to **Redirect URLs**.
-3. Copy the project URL and anon key into `web-app/frontend/.env.local` (see `.env.example`). Set `NEXT_PUBLIC_SITE_URL` to the same deployed frontend URL in the production environment (for example, Vercel). Do not set it locally; local auth will use `http://localhost:3000`.
-4. Run `supabase/schema.sql` in the SQL editor. That creates:
-  - a private `user-files` bucket (`.edf` + `.pdf`, 500 MB limit)
-  - a `user_files` table with row-level security
-  - storage policies so each user can only access `{user_id}/edf/` and `{user_id}/reports/`
-
-## Appendix
-
-- `<insert appendix here>`
-
+The frontend route tree and backend API are documented in [web-app/ENDPOINTS.md](web-app/ENDPOINTS.md).
