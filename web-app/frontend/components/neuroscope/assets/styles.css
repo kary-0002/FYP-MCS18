@@ -1,6 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
-:root {
+.neuroscope-root {
   --ink: #132a2a;
   --muted: #6d7c78;
   --line: #dce4e0;
@@ -16,10 +16,10 @@
   --sidebar: 230px;
   --notes: 320px;
 }
-* {
+.neuroscope-root * {
   box-sizing: border-box;
 }
-body {
+.neuroscope-root {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
@@ -28,7 +28,7 @@ body {
     sans-serif;
   overflow: hidden;
 }
-.topbar {
+.neuroscope-root .topbar {
   height: 72px;
   background: #fff;
   border-bottom: 1px solid var(--line);
@@ -37,13 +37,13 @@ body {
   padding: 0 24px;
   gap: 28px;
 }
-.brand {
+.neuroscope-root .brand {
   display: flex;
   align-items: center;
   gap: 11px;
   min-width: 206px;
 }
-.brand-mark {
+.neuroscope-root .brand-mark {
   display: grid;
   place-items: center;
   width: 36px;
@@ -54,30 +54,29 @@ body {
   font-weight: 700;
   font-size: 18px;
 }
-.brand strong,
-.brand small {
+.neuroscope-root .brand strong, .neuroscope-root .brand small {
   display: block;
 }
-.brand strong {
+.neuroscope-root .brand strong {
   font-size: 16px;
 }
-.brand small {
+.neuroscope-root .brand small {
   font-size: 11px;
   color: var(--muted);
 }
-.file-meta {
+.neuroscope-root .file-meta {
   color: var(--muted);
   font: 12px "JetBrains Mono";
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.header-actions {
+.neuroscope-root .header-actions {
   margin-left: auto;
   display: flex;
   gap: 8px;
 }
-.button {
+.neuroscope-root .button {
   font: 600 13px "DM Sans";
   border: 1px solid var(--line);
   background: #fff;
@@ -87,38 +86,38 @@ body {
   cursor: pointer;
   transition: 0.15s;
 }
-.button:hover {
+.neuroscope-root .button:hover {
   border-color: #9aada7;
   transform: translateY(-1px);
 }
-.button:disabled {
+.neuroscope-root .button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
 }
-.button.primary {
+.neuroscope-root .button.primary {
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);
 }
-.button.primary:hover {
+.neuroscope-root .button.primary:hover {
   background: var(--green);
 }
-.button.ghost {
+.neuroscope-root .button.ghost {
   background: transparent;
 }
-.button.large {
+.neuroscope-root .button.large {
   display: inline-block;
   padding: 14px 22px;
   font-size: 14px;
 }
-.button.compact {
+.neuroscope-root .button.compact {
   padding: 8px 10px;
 }
-.button.full {
+.neuroscope-root .button.full {
   width: 100%;
 }
-.analysis-status-row {
+.neuroscope-root .analysis-status-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -128,19 +127,19 @@ body {
   font-size: 12px;
   color: #6d7c78;
 }
-#backgroundAnalysisStatus {
+.neuroscope-root #backgroundAnalysisStatus {
   margin-top: 8px;
   margin-bottom: 5px;
 }
-#detectedSeizures {
+.neuroscope-root #detectedSeizures {
   margin-top: 0;
   margin-bottom: 0;
 }
-.analysis-status-row span {
+.neuroscope-root .analysis-status-row span {
   flex: 1;
   min-width: 0;
 }
-.analysis-action-button {
+.neuroscope-root .analysis-action-button {
   flex: 0 0 auto;
   padding: 5px 10px;
   border: 1px solid #b8c4c0;
@@ -150,11 +149,11 @@ body {
   font: inherit;
   cursor: pointer;
 }
-.analysis-action-button:hover {
+.neuroscope-root .analysis-action-button:hover {
   background: rgba(109, 124, 120, 0.08);
   border-color: #879690;
 }
-.analysis-console {
+.neuroscope-root .analysis-console {
   margin: 12px 0 4px;
   padding: 11px 12px;
   border: 1px solid #dce4e0;
@@ -164,39 +163,39 @@ body {
   font-size: 11px;
   flex: 0 0 auto;
 }
-.analysis-actions { display: grid; gap: 6px; margin-top: 10px; }
-.analysis-actions .button { width: 100%; white-space: normal; }
-.analysis-console-body { margin-top: 8px; }
-.analysis-task-progress { margin-top: 10px; }
-.analysis-task-progress:first-child { margin-top: 0; }
-.analysis-task-progress .analysis-progress-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; text-align: left; }
-.analysis-task-progress .analysis-progress-label span:last-child { text-align: right; }
-.analysis-console-log { max-height: 120px; margin: 9px 0 0; padding: 0; overflow-y: auto; list-style: none; }
-.analysis-console-log li { display: flex; gap: 8px; margin-top: 5px; line-height: 1.35; }
-.analysis-console-log time { flex: 0 0 auto; color: #899690; font: 9px "JetBrains Mono", monospace; }
-.analysis-console-log li.success span { color: #277451; }
-.analysis-console-log li.error span { color: #a43e37; }
-.analysis-console-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.analysis-console-heading button { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.analysis-console-heading strong { color: #24332f; font-size: 12px; }
-.analysis-console-chevron { color: #71817b; font-size: 14px; }
-.analysis-console-heading > span { color: #71817b; font: 9px "JetBrains Mono", monospace; letter-spacing: .06em; }
-.analysis-console ol { display: grid; gap: 7px; margin: 9px 0 0; padding: 0; list-style: none; }
-.analysis-console-log { max-height: 132px; margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.analysis-console-log[hidden] { display: none; }
-.analysis-console li { display: flex; align-items: baseline; gap: 8px; line-height: 1.35; }
-.analysis-console li time { flex: 0 0 auto; color: #899690; font: 9px "JetBrains Mono", monospace; }
-.analysis-console li.success span { color: #277451; }
-.analysis-console li.error span { color: #a43e37; }
-.analysis-progress { height: 3px; overflow: hidden; margin-top: 9px; border-radius: 3px; background: #e3ebe7; }
-.analysis-progress i { display: block; height: 100%; border-radius: inherit; background: #368768; }
-.analysis-progress.indeterminate i { animation: analysis-progress 1.4s ease-in-out infinite alternate; }
-.analysis-progress-label { margin-top: 4px; color: #71817b; font: 9px "JetBrains Mono", monospace; text-align: right; }
+.neuroscope-root .analysis-actions { display: grid; gap: 6px; margin-top: 10px; }
+.neuroscope-root .analysis-actions .button { width: 100%; white-space: normal; }
+.neuroscope-root .analysis-console-body { margin-top: 8px; }
+.neuroscope-root .analysis-task-progress { margin-top: 10px; }
+.neuroscope-root .analysis-task-progress:first-child { margin-top: 0; }
+.neuroscope-root .analysis-task-progress .analysis-progress-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; text-align: left; }
+.neuroscope-root .analysis-task-progress .analysis-progress-label span:last-child { text-align: right; }
+.neuroscope-root .analysis-console-log { max-height: 120px; margin: 9px 0 0; padding: 0; overflow-y: auto; list-style: none; }
+.neuroscope-root .analysis-console-log li { display: flex; gap: 8px; margin-top: 5px; line-height: 1.35; }
+.neuroscope-root .analysis-console-log time { flex: 0 0 auto; color: #899690; font: 9px "JetBrains Mono", monospace; }
+.neuroscope-root .analysis-console-log li.success span { color: #277451; }
+.neuroscope-root .analysis-console-log li.error span { color: #a43e37; }
+.neuroscope-root .analysis-console-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.neuroscope-root .analysis-console-heading button { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.neuroscope-root .analysis-console-heading strong { color: #24332f; font-size: 12px; }
+.neuroscope-root .analysis-console-chevron { color: #71817b; font-size: 14px; }
+.neuroscope-root .analysis-console-heading > span { color: #71817b; font: 9px "JetBrains Mono", monospace; letter-spacing: .06em; }
+.neuroscope-root .analysis-console ol { display: grid; gap: 7px; margin: 9px 0 0; padding: 0; list-style: none; }
+.neuroscope-root .analysis-console-log { max-height: 132px; margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.neuroscope-root .analysis-console-log[hidden] { display: none; }
+.neuroscope-root .analysis-console li { display: flex; align-items: baseline; gap: 8px; line-height: 1.35; }
+.neuroscope-root .analysis-console li time { flex: 0 0 auto; color: #899690; font: 9px "JetBrains Mono", monospace; }
+.neuroscope-root .analysis-console li.success span { color: #277451; }
+.neuroscope-root .analysis-console li.error span { color: #a43e37; }
+.neuroscope-root .analysis-progress { height: 3px; overflow: hidden; margin-top: 9px; border-radius: 3px; background: #e3ebe7; }
+.neuroscope-root .analysis-progress i { display: block; height: 100%; border-radius: inherit; background: #368768; }
+.neuroscope-root .analysis-progress.indeterminate i { animation: analysis-progress 1.4s ease-in-out infinite alternate; }
+.neuroscope-root .analysis-progress-label { margin-top: 4px; color: #71817b; font: 9px "JetBrains Mono", monospace; text-align: right; }
 @keyframes analysis-progress { from { transform: translateX(-20%); } to { transform: translateX(205%); } }
-.hidden {
+.neuroscope-root .hidden {
   display: none !important;
 }
-.empty-state {
+.neuroscope-root .empty-state {
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -205,7 +204,7 @@ body {
   text-align: center;
   background: radial-gradient(circle at 50% 45%, #fff 0, #f5f7f4 48%);
 }
-.signal-icon {
+.neuroscope-root .signal-icon {
   height: 65px;
   display: flex;
   align-items: center;
@@ -213,81 +212,81 @@ body {
   gap: 5px;
   margin-bottom: 24px;
 }
-.signal-icon i {
+.neuroscope-root .signal-icon i {
   width: 5px;
   border-radius: 4px;
   background: var(--green);
   height: 20px;
 }
-.signal-icon i:nth-child(2) {
+.neuroscope-root .signal-icon i:nth-child(2) {
   height: 42px;
 }
-.signal-icon i:nth-child(3) {
+.neuroscope-root .signal-icon i:nth-child(3) {
   height: 62px;
   background: var(--orange);
 }
-.signal-icon i:nth-child(4) {
+.neuroscope-root .signal-icon i:nth-child(4) {
   height: 36px;
 }
-.signal-icon i:nth-child(5) {
+.neuroscope-root .signal-icon i:nth-child(5) {
   height: 18px;
 }
-.eyebrow {
+.neuroscope-root .eyebrow {
   font: 600 10px "JetBrains Mono";
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--teal);
 }
-.empty-state h1 {
+.neuroscope-root .empty-state h1 {
   font-size: 46px;
   line-height: 1.05;
   letter-spacing: -2px;
   margin: 12px 0 16px;
 }
-.empty-state h1 em {
+.neuroscope-root .empty-state h1 em {
   font-weight: 400;
   color: var(--teal);
 }
-.empty-state p {
+.neuroscope-root .empty-state p {
   color: var(--muted);
   max-width: 510px;
   font-size: 15px;
   margin: 0 0 26px;
 }
-.compatibility {
+.neuroscope-root .compatibility {
   display: flex;
   gap: 24px;
   color: var(--muted);
   font-size: 12px;
   margin-top: 28px;
 }
-.compatibility span::first-letter {
+.neuroscope-root .compatibility span::first-letter {
   color: var(--green);
 }
-.workspace {
+.neuroscope-root .workspace {
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr) var(--notes);
   height: 100vh;
   min-height: 0;
 }
-.viewer-loading-screen {
+.neuroscope-root .viewer-loading-screen {
   display: grid;
   min-height: 100vh;
   place-items: center;
   padding: 24px;
   background: radial-gradient(circle at 50% 35%, #fff 0, #f5f7f4 55%);
 }
-.viewer-loading-card {
+.neuroscope-root .viewer-loading-card {
   width: min(520px, 100%);
   padding: 40px;
   border: 1px solid var(--line);
   background: var(--white);
   text-align: center;
 }
-.viewer-loading-card h1 { margin: 14px 0 8px; font-size: 25px; }
-.viewer-loading-card p { overflow-wrap: anywhere; color: var(--muted); }
-.viewer-loading-card small { color: var(--muted); }
-.loading-spinner {
+.neuroscope-root .viewer-loading-card h1 { margin: 14px 0 8px; font-size: 25px; }
+.neuroscope-root .viewer-loading-card p { overflow-wrap: anywhere; color: var(--muted); }
+.neuroscope-root .viewer-loading-card small { color: var(--muted); }
+.neuroscope-root .loading-spinner {
   width: 28px;
   height: 28px;
   margin: 0 auto 18px;
@@ -296,33 +295,32 @@ body {
   border-radius: 50%;
   animation: spin .7s linear infinite;
 }
-.loading-progress-track { height: 4px; margin: 22px 0 12px; overflow: hidden; background: var(--line); }
-.loading-progress-track span { display: block; width: 35%; height: 100%; background: var(--green); animation: analysis-progress 1.4s ease-in-out infinite alternate; }
-.sidebar,
-.annotations-panel {
+.neuroscope-root .loading-progress-track { height: 4px; margin: 22px 0 12px; overflow: hidden; background: var(--line); }
+.neuroscope-root .loading-progress-track span { display: block; width: 35%; height: 100%; background: var(--green); animation: analysis-progress 1.4s ease-in-out infinite alternate; }
+.neuroscope-root .sidebar, .neuroscope-root .annotations-panel {
   background: #fff;
   padding: 20px 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-.sidebar {
+.neuroscope-root .sidebar {
   border-right: 1px solid var(--line);
 }
-.annotations-panel {
+.neuroscope-root .annotations-panel {
   border-left: 1px solid var(--line);
 }
-.side-heading {
+.neuroscope-root .side-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
 }
-.side-heading h2 {
+.neuroscope-root .side-heading h2 {
   font-size: 18px;
   margin: 3px 0 0;
 }
-.icon-button {
+.neuroscope-root .icon-button {
   width: 34px;
   height: 34px;
   border: 1px solid var(--line);
@@ -331,10 +329,10 @@ body {
   color: var(--ink);
   cursor: pointer;
 }
-.icon-button:hover {
+.neuroscope-root .icon-button:hover {
   background: #edf5f1;
 }
-.search {
+.neuroscope-root .search {
   height: 36px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -344,18 +342,17 @@ body {
   gap: 5px;
   margin-bottom: 12px;
 }
-.search input {
+.neuroscope-root .search input {
   border: 0;
   outline: 0;
   width: 100%;
   font: 13px inherit;
 }
-.channel-list,
-.annotation-list {
+.neuroscope-root .channel-list, .neuroscope-root .annotation-list {
   overflow: auto;
   min-height: 0;
 }
-.channel-group-heading {
+.neuroscope-root .channel-group-heading {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -367,7 +364,7 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.channel-group-heading input[type="checkbox"] {
+.neuroscope-root .channel-group-heading input[type="checkbox"] {
   flex: 0 0 auto;
   width: 13px;
   height: 13px;
@@ -375,39 +372,39 @@ body {
   accent-color: var(--green);
   cursor: pointer;
 }
-.channel-group-heading.level-1 {
+.neuroscope-root .channel-group-heading.level-1 {
   margin-left: 8px;
   font-size: 8px;
 }
-.channel-group-checkbox {
+.neuroscope-root .channel-group-checkbox {
   flex: 0 0 auto;
   margin: 0;
   accent-color: var(--channel-color, var(--green));
 }
-.channel-group {
+.neuroscope-root .channel-group {
   border-bottom: 1px solid #eef1ef;
 }
-.channel-group > summary {
+.neuroscope-root .channel-group > summary {
   cursor: pointer;
   list-style-position: outside;
   user-select: none;
 }
-.channel-group > summary::marker {
+.neuroscope-root .channel-group > summary::marker {
   color: var(--channel-color, var(--muted));
 }
-.channel-group[open] > summary {
+.neuroscope-root .channel-group[open] > summary {
   margin-bottom: 2px;
 }
-.channel-group .channel {
+.neuroscope-root .channel-group .channel {
   padding-left: 16px;
 }
-.channel-group .channel-group .channel {
+.neuroscope-root .channel-group .channel-group .channel {
   padding-left: 28px;
 }
-.channel-group-heading:first-child {
+.neuroscope-root .channel-group-heading:first-child {
   margin-top: 0;
 }
-.channel {
+.neuroscope-root .channel {
   display: flex;
   align-items: center;
   padding: 7px 4px;
@@ -415,10 +412,10 @@ body {
   border-bottom: 1px solid #eef1ef;
   cursor: pointer;
 }
-.channel input {
+.neuroscope-root .channel input {
   accent-color: var(--green);
 }
-.channel-swatch {
+.neuroscope-root .channel-swatch {
   width: 9px;
   height: 9px;
   flex: 0 0 9px;
@@ -426,24 +423,24 @@ body {
   background: var(--channel-color, var(--green));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--channel-color, var(--green)) 18%, transparent);
 }
-.channel-name {
+.neuroscope-root .channel-name {
   font: 11px "JetBrains Mono";
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.channel-rate {
+.neuroscope-root .channel-rate {
   margin-left: auto;
   font-size: 9px;
   color: var(--muted);
 }
-.viewer-panel {
+.neuroscope-root .viewer-panel {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
 }
-.toolbar {
+.neuroscope-root .toolbar {
   height: 60px;
   background: #fff;
   border-bottom: 1px solid var(--line);
@@ -454,38 +451,37 @@ body {
   min-width: 0;
   overflow: hidden;
 }
-.toolbar > .button.compact,
-.toolbar .transport .icon-button {
+.neuroscope-root .toolbar > .button.compact, .neuroscope-root .toolbar .transport .icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 34px;
   line-height: 1;
 }
-.toolbar .control select {
+.neuroscope-root .toolbar .control select {
   height: 34px;
   line-height: 1;
 }
-.transport {
+.neuroscope-root .transport {
   display: flex;
   gap: 5px;
 }
-.time-readout {
+.neuroscope-root .time-readout {
   display: flex;
   gap: 6px;
   align-items: baseline;
 }
-.time-readout strong {
+.neuroscope-root .time-readout strong {
   font: 500 13px "JetBrains Mono";
 }
-.time-readout span {
+.neuroscope-root .time-readout span {
   font: 10px "JetBrains Mono";
   color: var(--muted);
 }
-.toolbar-spacer {
+.neuroscope-root .toolbar-spacer {
   flex: 1;
 }
-.control {
+.neuroscope-root .control {
   font-size: 10px;
   text-transform: uppercase;
   color: var(--muted);
@@ -493,14 +489,14 @@ body {
   align-items: center;
   gap: 6px;
 }
-.control select {
+.neuroscope-root .control select {
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 7px;
   background: #fff;
   color: var(--ink);
 }
-.plot-wrap {
+.neuroscope-root .plot-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
@@ -510,12 +506,12 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-#eegCanvas {
+.neuroscope-root #eegCanvas {
   display: block;
   width: 100%;
   height: 100%;
 }
-.plot-hint {
+.neuroscope-root .plot-hint {
   position: absolute;
   right: 10px;
   bottom: 8px;
@@ -527,7 +523,7 @@ body {
   color: #786f55;
   pointer-events: none;
 }
-.selection {
+.neuroscope-root .selection {
   position: absolute;
   top: 0;
   bottom: auto;
@@ -536,7 +532,7 @@ body {
   border-right: 1px solid var(--teal);
   pointer-events: none;
 }
-.selection span {
+.neuroscope-root .selection span {
   position: absolute;
   top: 6px;
   left: 4px;
@@ -547,7 +543,7 @@ body {
   font: 9px "JetBrains Mono";
   white-space: nowrap;
 }
-.loading {
+.neuroscope-root .loading {
   position: absolute;
   inset: 0;
   display: flex;
@@ -558,7 +554,7 @@ body {
   color: var(--muted);
   z-index: 4;
 }
-.loading span {
+.neuroscope-root .loading span {
   width: 17px;
   height: 17px;
   border: 2px solid var(--line);
@@ -571,7 +567,7 @@ body {
     transform: rotate(360deg);
   }
 }
-.timeline {
+.neuroscope-root .timeline {
   height: 42px;
   background: #fff;
   border-top: 1px solid var(--line);
@@ -580,33 +576,33 @@ body {
   align-items: center;
   gap: 10px;
 }
-.timeline span {
+.neuroscope-root .timeline span {
   font: 9px "JetBrains Mono";
   color: var(--muted);
 }
-.timeline input {
+.neuroscope-root .timeline input {
   flex: 1;
   accent-color: var(--green);
 }
-.count {
+.neuroscope-root .count {
   background: #e5f2ed;
   color: var(--green);
   border-radius: 12px;
   padding: 3px 8px;
   font: 10px "JetBrains Mono";
 }
-.annotation-list {
+.neuroscope-root .annotation-list {
   margin-top: 12px;
   flex: 1 1 auto;
 }
-.aside-empty {
+.neuroscope-root .aside-empty {
   text-align: center;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
   padding: 40px 16px;
 }
-.annotation {
+.neuroscope-root .annotation {
   border: 1px solid var(--line);
   border-left: 4px solid var(--annotation-color, var(--orange));
   border-radius: 8px;
@@ -614,40 +610,40 @@ body {
   margin-bottom: 9px;
   background: color-mix(in srgb, var(--annotation-color, var(--orange)) 5%, white);
 }
-.annotation-seizure { --annotation-color: #d75a54; }
-.annotation-spike { --annotation-color: #e69536; }
-.annotation-artifact { --annotation-color: #8d78bc; }
-.annotation-eye-movement { --annotation-color: #5797c7; }
-.annotation-sleep-event { --annotation-color: #248b78; }
-.annotation-technical-issue { --annotation-color: #7b8582; }
-.annotation-other { --annotation-color: #bd7a9c; }
-.annotation-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.annotation-card-header strong { color: var(--annotation-color); font-size: 12px; }
-.annotation-card-header .annotation-time { flex: 0 0 auto; margin: 0; font-size: 9px; cursor: inherit; }
-.annotation-delete { display: grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); border-radius: 0; background: color-mix(in srgb, var(--red) 10%, white); color: #a43e37; font: 600 15px/1 "DM Sans", sans-serif; cursor: pointer; }
-.annotation-delete:hover { background: color-mix(in srgb, var(--red) 18%, white); }
-.annotation-time { margin: 4px 0; padding: 0; border: 0; background: transparent; color: var(--teal); font: 10px "JetBrains Mono", monospace; }
-.annotation-note { margin: 3px 0 8px; color: var(--muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
-.annotation-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 5px; }
-.annotation-edit { min-width: 48px; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
-.annotation-edit:hover { border-color: var(--annotation-color); color: var(--annotation-color); }
-.annotation:hover {
+.neuroscope-root .annotation-seizure { --annotation-color: #d75a54; }
+.neuroscope-root .annotation-spike { --annotation-color: #e69536; }
+.neuroscope-root .annotation-artifact { --annotation-color: #8d78bc; }
+.neuroscope-root .annotation-eye-movement { --annotation-color: #5797c7; }
+.neuroscope-root .annotation-sleep-event { --annotation-color: #248b78; }
+.neuroscope-root .annotation-technical-issue { --annotation-color: #7b8582; }
+.neuroscope-root .annotation-other { --annotation-color: #bd7a9c; }
+.neuroscope-root .annotation-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.neuroscope-root .annotation-card-header strong { color: var(--annotation-color); font-size: 12px; }
+.neuroscope-root .annotation-card-header .annotation-time { flex: 0 0 auto; margin: 0; font-size: 9px; cursor: inherit; }
+.neuroscope-root .annotation-delete { display: grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); border-radius: 0; background: color-mix(in srgb, var(--red) 10%, white); color: #a43e37; font: 600 15px/1 "DM Sans", sans-serif; cursor: pointer; }
+.neuroscope-root .annotation-delete:hover { background: color-mix(in srgb, var(--red) 18%, white); }
+.neuroscope-root .annotation-time { margin: 4px 0; padding: 0; border: 0; background: transparent; color: var(--teal); font: 10px "JetBrains Mono", monospace; }
+.neuroscope-root .annotation-note { margin: 3px 0 8px; color: var(--muted); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.neuroscope-root .annotation-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 5px; }
+.neuroscope-root .annotation-edit { min-width: 48px; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
+.neuroscope-root .annotation-edit:hover { border-color: var(--annotation-color); color: var(--annotation-color); }
+.neuroscope-root .annotation:hover {
   background: #f8faf8;
 }
-.annotation-top {
+.neuroscope-root .annotation-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.annotation-label {
+.neuroscope-root .annotation-label {
   font-weight: 600;
 }
-.annotation-time {
+.neuroscope-root .annotation-time {
   font: 9px "JetBrains Mono";
   color: var(--teal);
   margin: 5px 0;
 }
-.annotation-note {
+.neuroscope-root .annotation-note {
   font-size: 11px;
   color: var(--muted);
   line-height: 1.4;
@@ -657,77 +653,75 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.annotation-actions {
+.neuroscope-root .annotation-actions {
   display: flex;
   gap: 5px;
 }
-.mini {
+.neuroscope-root .mini {
   border: 0;
   background: none;
   color: var(--muted);
   cursor: pointer;
   padding: 2px;
 }
-.mini.delete:hover {
+.neuroscope-root .mini.delete:hover {
   color: var(--red);
 }
-dialog {
+.neuroscope-root dialog {
   border: 0;
   border-radius: 14px;
   padding: 0;
   width: min(480px, 92vw);
   box-shadow: 0 24px 80px #17302c33;
 }
-dialog::backdrop {
+.neuroscope-root dialog::backdrop {
   background: #122a2888;
   backdrop-filter: blur(2px);
 }
-dialog form {
+.neuroscope-root dialog form {
   padding: 24px;
 }
-.dialog-head {
+.neuroscope-root .dialog-head {
   display: flex;
   justify-content: space-between;
   align-items: start;
 }
-.dialog-head h2 {
+.neuroscope-root .dialog-head h2 {
   margin: 4px 0 0;
 }
-.close {
+.neuroscope-root .close {
   font-size: 25px;
   border: 0;
   background: none;
   color: var(--muted);
   cursor: pointer;
 }
-.range-card {
+.neuroscope-root .range-card {
   background: #edf6f2;
   border-radius: 9px;
   padding: 10px 12px;
   margin: 18px 0;
 }
-.range-card span {
+.neuroscope-root .range-card span {
   font: 9px "JetBrains Mono";
   color: var(--teal);
   display: block;
 }
-.range-card strong {
+.neuroscope-root .range-card strong {
   font: 12px "JetBrains Mono";
 }
-.annotation-time-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
-.annotation-time-inputs label { margin-top: 0; font-size: 10px; }
-.annotation-time-inputs input { padding: 7px; font: 11px "JetBrains Mono", monospace; }
-.range-card > small { display: block; margin-top: 7px; color: var(--muted); font: 10px "JetBrains Mono", monospace; }
-.annotation-form-error { margin: 10px 0 0; color: #a43e37; font-size: 12px; }
-dialog label {
+.neuroscope-root .annotation-time-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.neuroscope-root .annotation-time-inputs label { margin-top: 0; font-size: 10px; }
+.neuroscope-root .annotation-time-inputs input { padding: 7px; font: 11px "JetBrains Mono", monospace; }
+.neuroscope-root .range-card > small { display: block; margin-top: 7px; color: var(--muted); font: 10px "JetBrains Mono", monospace; }
+.neuroscope-root .annotation-form-error { margin: 10px 0 0; color: #a43e37; font-size: 12px; }
+.neuroscope-root dialog label {
   font-size: 12px;
   font-weight: 600;
   display: block;
   margin-top: 14px;
 }
-dialog select,
-dialog input,
-dialog textarea {
+.neuroscope-root dialog select, .neuroscope-root dialog input, .neuroscope-root dialog textarea {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -738,13 +732,13 @@ dialog textarea {
   color: var(--ink);
   resize: vertical;
 }
-.dialog-actions {
+.neuroscope-root .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
 }
-.toast {
+.neuroscope-root .toast {
   position: fixed;
   bottom: 20px;
   left: 50%;
@@ -758,67 +752,66 @@ dialog textarea {
   transition: 0.2s;
   z-index: 20;
 }
-.toast.show {
+.neuroscope-root .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
 }
 @media (max-width: 1000px) {
-  :root {
+  .neuroscope-root {
     --notes: 270px;
     --sidebar: 190px;
   }
-  .file-meta {
+  .neuroscope-root .file-meta {
     display: none;
   }
 }
 @media (max-width: 760px) {
-  body {
+  .neuroscope-root {
     overflow: auto;
   }
-  .topbar {
+  .neuroscope-root .topbar {
     padding: 0 12px;
   }
-  .brand {
+  .neuroscope-root .brand {
     min-width: auto;
   }
-  .brand small,
-  .header-actions .ghost {
+  .neuroscope-root .brand small, .neuroscope-root .header-actions .ghost {
     display: none;
   }
-  .workspace {
+  .neuroscope-root .workspace {
     grid-template-columns: 1fr;
     height: auto;
   }
-  .sidebar {
+  .neuroscope-root .sidebar {
     display: none;
   }
-  .viewer-panel {
+  .neuroscope-root .viewer-panel {
     height: 70vh;
   }
-  .annotations-panel {
+  .neuroscope-root .annotations-panel {
     border-left: 0;
     border-top: 1px solid var(--line);
     min-height: 300px;
   }
-  .toolbar .control {
+  .neuroscope-root .toolbar .control {
     display: none;
   }
-  .empty-state h1 {
+  .neuroscope-root .empty-state h1 {
     font-size: 36px;
   }
 }
 @media (max-width: 1200px) {
-  .toolbar {
+  .neuroscope-root .toolbar {
     gap: 8px;
     padding: 0 10px;
   }
-  .control {
+  .neuroscope-root .control {
     gap: 4px;
   }
-  .control select {
+  .neuroscope-root .control select {
     padding: 6px 5px;
   }
-  .button.compact {
+  .neuroscope-root .button.compact {
     padding: 7px 8px;
     white-space: nowrap;
     flex-shrink: 0;
@@ -826,22 +819,43 @@ dialog textarea {
 }
 @media (max-width: 1100px) {
   /* Keep the primary viewer actions visible when the centre column narrows. */
-  .toolbar .control {
+  .neuroscope-root .toolbar .control {
     display: none;
   }
-  .toolbar-spacer {
+  .neuroscope-root .toolbar-spacer {
     min-width: 0;
   }
 }
 @media (max-width: 900px) {
-  .time-readout {
+  .neuroscope-root .time-readout {
     display: none;
   }
-  .toolbar {
+  .neuroscope-root .toolbar {
     gap: 6px;
     padding: 0 8px;
   }
 }
 @media (max-width: 1000px) {
-  .toolbar-open-long { display: none; }
+  .neuroscope-root .toolbar-open-long { display: none; }
+}
+.neuroscope-root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.neuroscope-root .workspace {
+  height: 100%;
+  min-height: 0;
+}
+.neuroscope-root .empty-state,
+.neuroscope-root .viewer-loading-screen {
+  height: 100%;
+  min-height: 100%;
+}
+@media (max-width: 760px) {
+  .neuroscope-root .workspace {
+    height: auto;
+    min-height: 100%;
+  }
 }

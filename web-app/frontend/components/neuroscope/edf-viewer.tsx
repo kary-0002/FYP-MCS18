@@ -81,7 +81,7 @@ export function ViewerLoadingScreen({
   message: string;
 }) {
   return (
-    <main className="viewer-loading-screen" aria-live="polite">
+    <div className="viewer-loading-screen" aria-live="polite">
       <section className="viewer-loading-card">
         <div className="loading-spinner" aria-hidden="true" />
         <span className="eyebrow">EEG signal review</span>
@@ -92,7 +92,7 @@ export function ViewerLoadingScreen({
         </div>
         <small>Large recordings can take a little while to prepare.</small>
       </section>
-    </main>
+    </div>
   );
 }
 

@@ -1,0 +1,53 @@
+.neuroscope-root {
+  --ink: #243330;
+  --muted: #687a76;
+  --line: #b8c8c4;
+  --paper: #eef5f3;
+  --white: #fbfdfc;
+  --mint: #d7ead8;
+  --green: #388b58;
+  --teal: #388b58;
+}
+
+.neuroscope-root { background: var(--paper); }
+.neuroscope-root .empty-state { height: 100%; padding: 28px; background: radial-gradient(circle at 80% 0, #dceee5 0, transparent 34rem), var(--paper); }
+.neuroscope-root .upload-panel { width: min(620px, 100%); border: 1px dashed var(--line); background: var(--white); padding: 48px 36px; text-align: center; }
+.neuroscope-root .empty-state h1 { margin: 10px 0 14px; font-size: 34px; letter-spacing: -1px; }
+.neuroscope-root .signal-icon { margin: 0 auto 18px; }
+.neuroscope-root .sidebar, .neuroscope-root .annotations-panel, .neuroscope-root .toolbar, .neuroscope-root .timeline { background: var(--white); }
+.neuroscope-root .recording-meta { margin: -4px 0 12px; color: var(--muted); font: 10px/1.5 'JetBrains Mono', monospace; overflow-wrap: anywhere; white-space: pre-line; }
+.neuroscope-root .button, .neuroscope-root .icon-button, .neuroscope-root .search, .neuroscope-root .control select, .neuroscope-root .annotation, .neuroscope-root dialog, .neuroscope-root dialog select, .neuroscope-root dialog input, .neuroscope-root dialog textarea, .neuroscope-root .range-card, .neuroscope-root .count { border-radius: 0; }
+.neuroscope-root .button.primary { background: var(--green); border-color: var(--green); }
+.neuroscope-root .button.primary:hover { background: #2f784c; }
+.neuroscope-root .plot-hint, .neuroscope-root .selection span, .neuroscope-root .toast { border-radius: 0; }
+
+.neuroscope-root.dark-mode {
+  --ink: #e4ebe8;
+  --muted: #a5b1ae;
+  --line: #4a4f4d;
+  --paper: #2a2a2a;
+  --white: #353535;
+  --mint: #b5cdb6;
+  --green: #8aaa8c;
+  --teal: #9bbb9d;
+  color-scheme: dark;
+}
+
+.neuroscope-root.dark-mode .empty-state { background: radial-gradient(circle at 80% 0, #26342b 0, transparent 34rem), #2a2a2a; }
+.neuroscope-root.dark-mode .upload-panel, .neuroscope-root.dark-mode .sidebar, .neuroscope-root.dark-mode .annotations-panel, .neuroscope-root.dark-mode .toolbar, .neuroscope-root.dark-mode .timeline { background: #353535; }
+.neuroscope-root.dark-mode .button, .neuroscope-root.dark-mode .icon-button, .neuroscope-root.dark-mode .control select { background: #353535; color: var(--ink); }
+.neuroscope-root.dark-mode .button.primary { background: var(--green); color: #172019; }
+.neuroscope-root.dark-mode .search input, .neuroscope-root.dark-mode dialog select, .neuroscope-root.dark-mode dialog input, .neuroscope-root.dark-mode dialog textarea { background: #292929; color: var(--ink); }
+.neuroscope-root.dark-mode .plot-wrap { background: #222; }
+.neuroscope-root.dark-mode #eegCanvas { filter: invert(.82) hue-rotate(70deg); }
+.neuroscope-root.dark-mode .plot-hint { background: #353535dd; border-color: #555; color: #c9cfcd; }
+.neuroscope-root.dark-mode .annotation:hover { background: #3b3f3d; }
+.neuroscope-root.dark-mode .annotation { background: color-mix(in srgb, var(--annotation-color, var(--orange)) 12%, #353535); }
+.neuroscope-root.dark-mode .annotation-delete { background: color-mix(in srgb, var(--red) 18%, #353535); color: #f2aaa4; }
+.neuroscope-root.dark-mode .viewer-loading-card { background: var(--white); }
+.neuroscope-root.dark-mode .range-card { background: #29352e; }
+.neuroscope-root.dark-mode dialog { background: #353535; color: var(--ink); }
+.neuroscope-root.dark-mode .loading { background: #222c; color: var(--muted); }
+.neuroscope-root .annotation-file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.neuroscope-root .annotation-file-actions .button { padding: 8px 6px; text-align: center; }
+.neuroscope-root .annotation-file-actions #generateReport { grid-column: 1 / -1; width: 100%; }

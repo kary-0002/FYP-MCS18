@@ -9,6 +9,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useNeuroScopeSession } from "@/components/neuroscope/neuroscope-session";
 
 const navigation = [
   { href: "/edf-reader", label: "EEG Viewer", icon: Activity },
@@ -29,6 +30,7 @@ function ThemeToggle() {
 export function Header() {
   const router = useRouter();
   const pathname = usePathname();
+  const { setSession } = useNeuroScopeSession();
   const [user, setUser] = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -65,6 +67,7 @@ export function Header() {
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    setSession(null);
     setUser(null);
     router.push("/");
     router.refresh();

@@ -1,5 +1,13 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import "./assets/styles.css";
 import "./assets/theme.css";
 import {
@@ -21,7 +29,7 @@ import {
 } from "@/lib/neuroscope/api";
 import type { Annotation, Channel, Recording } from "@/lib/neuroscope/types";
 
-type SavedState = {
+export type SavedState = {
   annotations?: Annotation[];
   metadata?: unknown;
   seizureDetection?: { status?: string; runAt?: string; results?: unknown };
@@ -32,6 +40,26 @@ type SavedState = {
     metrics?: unknown;
   };
   report?: { generatedAt?: string; outOfDate?: boolean };
+  viewer?: {
+    selectedChannelIds?: string[];
+    windowSize?: number;
+    start?: number;
+    gain?: number;
+  };
+};
+export type NeuroScopeViewerProps = {
+  initialFile?: {
+    file: File;
+    recordingState: unknown | null;
+    sourceUrl?: string | null;
+  } | null;
+  onRecordingOpened: (file: File, initialLoad: boolean) => void;
+  onRecordingStateChange: (file: File, state: unknown) => void;
+  onPrepareNicolet: (file: File) => Promise<any>;
+  onReportGenerated: (blob: Blob, name: string) => void;
+};
+export type NeuroScopeViewerHandle = {
+  getSavePayload: () => { file: File; state: unknown } | null;
 };
 const WINDOW_OPTIONS = [5, 10, 20, 30, 60];
 type TaskName = "seizure" | "background" | "report";
@@ -64,7 +92,19 @@ function makeAutomatedAnnotations(result: any): Annotation[] {
     ];
   });
 }
-export default function NeuroScopePage() {
+export const NeuroScopeViewer = forwardRef<
+  NeuroScopeViewerHandle,
+  NeuroScopeViewerProps
+>(function NeuroScopeViewer(
+  {
+    initialFile,
+    onRecordingOpened,
+    onRecordingStateChange,
+    onPrepareNicolet,
+    onReportGenerated,
+  },
+  ref,
+) {
   const [file, setFile] = useState<File | null>(null),
     [recording, setRecording] = useState<Recording | null>(null),
     [channels, setChannels] = useState<Channel[]>([]),
@@ -101,10 +141,10 @@ export default function NeuroScopePage() {
     [reportOutOfDate, setReportOutOfDate] = useState(false),
     [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null),
     [analysisSourceUrl, setAnalysisSourceUrl] = useState<string | null>(null);
-  const fileRef = useRef<File | null>(null),
+  const rootRef = useRef<HTMLDivElement>(null),
+    fileRef = useRef<File | null>(null),
     recordingRef = useRef<Recording | null>(null),
-    saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
-    pendingNicolet = useRef<Map<string, (value: unknown) => void>>(new Map());
+    initialFileHandled = useRef<File | null>(null);
   const log = useCallback(
     (message: string, status = "info") =>
       setActivity((items) => [
@@ -118,6 +158,7 @@ export default function NeuroScopePage() {
       input: File,
       saved?: SavedState | null,
       sourceUrl?: string | null,
+      initialLoad = false,
     ) => {
       setIsOpening(true);
       setLoadingFileName(input.name);
@@ -133,25 +174,7 @@ export default function NeuroScopePage() {
         let uploadResult: any = null;
         if (/\.e$/i.test(input.name)) {
           setLoadingMessage("Converting Nicolet recording to EDF");
-          const requestId = crypto.randomUUID();
-          uploadResult = await new Promise<any>((resolve, reject) => {
-            const timer = setTimeout(
-              () => {
-                pendingNicolet.current.delete(requestId);
-                reject(Error("Nicolet conversion timed out."));
-              },
-              30 * 60 * 1000,
-            );
-            pendingNicolet.current.set(requestId, (value) => {
-              clearTimeout(timer);
-              resolve(value);
-            });
-            window.parent.postMessage(
-              { type: "neuroscope:prepare-nicolet", requestId, file: input },
-              window.location.origin,
-            );
-          });
-          if (uploadResult.error) throw Error(uploadResult.error);
+          uploadResult = await onPrepareNicolet(input);
           sessionId = uploadResult.session_id;
           setLoadingMessage("Reading converted EDF file");
           actual = await getSessionFile(sessionId, uploadResult.edf_filename);
@@ -161,13 +184,33 @@ export default function NeuroScopePage() {
           defs = makeChannels(parsed.signals);
         fileRef.current = actual;
         recordingRef.current = parsed;
+        initialFileHandled.current = actual;
         setFile(actual);
         setRecording(parsed);
         setChannels(defs);
         setSelected(
-          new Set(defs.filter((c) => c.kind === "calculated").map((c) => c.id)),
+          Array.isArray(saved?.viewer?.selectedChannelIds)
+            ? new Set(
+                saved.viewer.selectedChannelIds.filter((id) =>
+                  defs.some((channel) => channel.id === id),
+                ),
+              )
+            : new Set(
+                defs.filter((c) => c.kind === "calculated").map((c) => c.id),
+              ),
         );
-        setStart(0);
+        const restoredWindow = saved?.viewer?.windowSize;
+        const windowValue = WINDOW_OPTIONS.includes(restoredWindow || 0)
+          ? restoredWindow!
+          : 10;
+        setWindowSize(windowValue);
+        setStart(
+          Math.max(
+            0,
+            Math.min(parsed.duration - windowValue, saved?.viewer?.start || 0),
+          ),
+        );
+        setGain(saved?.viewer?.gain ?? 1);
         setAnalysisSessionId(sessionId);
         setAnalysisSourceUrl(sourceUrl || null);
         setRunningTasks(new Set());
@@ -196,14 +239,7 @@ export default function NeuroScopePage() {
         setReportGeneratedAt(saved?.report?.generatedAt || null);
         setReportOutOfDate(saved?.report?.outOfDate || false);
         log(`Recording loaded: ${defs.length} channels`);
-        window.parent.postMessage(
-          {
-            type: "neuroscope:recording-opened",
-            name: actual.name,
-            size: actual.size,
-          },
-          window.location.origin,
-        );
+        onRecordingOpened(actual, initialLoad);
       } catch (e) {
         const message =
           e instanceof Error ? e.message : "Could not open EEG recording.";
@@ -212,7 +248,7 @@ export default function NeuroScopePage() {
         setIsOpening(false);
       }
     },
-    [log],
+    [log, onPrepareNicolet, onRecordingOpened],
   );
   const openFile = useCallback(
     (input: File) => {
@@ -248,6 +284,12 @@ export default function NeuroScopePage() {
         metrics: (background as any)?.metrics || null,
       },
       report: { generatedAt: reportGeneratedAt, outOfDate: reportOutOfDate },
+      viewer: {
+        selectedChannelIds: Array.from(selected),
+        windowSize,
+        start,
+        gain,
+      },
     }),
     [
       metadata,
@@ -260,92 +302,52 @@ export default function NeuroScopePage() {
       background,
       reportGeneratedAt,
       reportOutOfDate,
+      selected,
+      windowSize,
+      start,
+      gain,
     ],
   );
+  useImperativeHandle(
+    ref,
+    () => ({
+      getSavePayload: () => {
+        if (!fileRef.current || !recordingRef.current) return null;
+        return { file: fileRef.current, state: recordingState() };
+      },
+    }),
+    [recordingState],
+  );
   useEffect(() => {
-    if (window.parent === window) {
-      window.location.replace("/edf-reader");
-      return;
-    }
-    const handler = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const data = event.data;
-      if (data?.type === "neuroscope:nicolet-ready") {
-        const resolve = pendingNicolet.current.get(data.requestId);
-        if (resolve) {
-          pendingNicolet.current.delete(data.requestId);
-          resolve(data.result || { error: data.error });
-        }
-      }
-      if (data?.type === "neuroscope:open-edf") {
-        setIsOpening(true);
-        setLoadingFileName(data.name || "Saved EDF recording");
-        setLoadingMessage("Downloading saved EDF file");
-        setError("");
-        void (async () => {
-          try {
-            const res = await fetch(data.url);
-            if (!res.ok)
-              throw Error("The saved EDF file could not be downloaded.");
-            const blob = await res.blob();
-            const f = new File([blob], data.name || "recording.edf", {
-              type: "application/octet-stream",
-            });
-            await opened(f, data.recordingState || null, data.url || null);
-          } catch (e) {
-            setError(
-              e instanceof Error ? e.message : "Could not open saved EEG",
-            );
-            setIsOpening(false);
-          }
-        })();
-      }
-      if (data?.type === "neuroscope:get-save-payload") {
-        if (!fileRef.current || !recordingRef.current) {
-          window.parent.postMessage(
-            {
-              type: "neuroscope:save-payload",
-              requestId: data.requestId,
-              error: "No EEG recording is currently open.",
-            },
-            window.location.origin,
-          );
-          return;
-        }
-        window.parent.postMessage(
-          {
-            type: "neuroscope:save-payload",
-            requestId: data.requestId,
-            file: fileRef.current,
-            state: recordingState(),
-          },
-          window.location.origin,
-        );
-      }
-      if (data?.type === "seizureai:theme")
-        document.body.classList.toggle("dark-mode", !!data.dark);
-    };
-    window.addEventListener("message", handler);
-    window.parent.postMessage(
-      { type: "seizureai:viewer-ready" },
-      window.location.origin,
+    if (!initialFile || initialFileHandled.current === initialFile.file) return;
+    initialFileHandled.current = initialFile.file;
+    void opened(
+      initialFile.file,
+      (initialFile.recordingState as SavedState | null) || null,
+      initialFile.sourceUrl || null,
+      true,
     );
-    return () => window.removeEventListener("message", handler);
-  }, [opened, recordingState]);
+  }, [initialFile, opened]);
   useEffect(() => {
     if (!file || !recording) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      if (window.parent !== window)
-        window.parent.postMessage(
-          { type: "neuroscope:recording-state", state: recordingState() },
-          window.location.origin,
-        );
-    }, 300);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, [file, recording, recordingState]);
+    onRecordingStateChange(file, recordingState());
+  }, [file, recording, onRecordingStateChange, recordingState]);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const updateTheme = () =>
+      root.classList.toggle(
+        "dark-mode",
+        document.documentElement.classList.contains("dark"),
+      );
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
   const ensureSession = useCallback(async () => {
     if (analysisSessionId) return analysisSessionId;
     const result = analysisSourceUrl
@@ -580,10 +582,7 @@ export default function NeuroScopePage() {
           await api("/report", { method: "POST", body })
         ).blob(),
         name = `${file.name.replace(/\.edf$/i, "")}_report.pdf`;
-      window.parent.postMessage(
-        { type: "seizureai:report-generated", blob, name },
-        window.location.origin,
-      );
+      onReportGenerated(blob, name);
       setReportGeneratedAt(new Date().toISOString());
       setReportOutOfDate(false);
       finishTask("report", "Report PDF generated", "completed");
@@ -702,24 +701,26 @@ export default function NeuroScopePage() {
   }, [playing, windowSize, recording, start]);
   if (isOpening)
     return (
-      <ViewerLoadingScreen
-        fileName={loadingFileName || file?.name || "Opening recording"}
-        message={loadingMessage}
-      />
+      <div className="neuroscope-root" ref={rootRef}>
+        <ViewerLoadingScreen
+          fileName={loadingFileName || file?.name || "Opening recording"}
+          message={loadingMessage}
+        />
+      </div>
     );
   if (!file || !recording)
     return (
-      <>
+      <div className="neuroscope-root" ref={rootRef}>
         {error && (
           <div role="alert" className="toast show">
             {error}
           </div>
         )}
         <UploadScreen onFile={openFile} />
-      </>
+      </div>
     );
   return (
-    <main>
+    <div className="neuroscope-root" ref={rootRef}>
       <section className="workspace">
         <ChannelSidebar
           channels={channels}
@@ -1077,6 +1078,6 @@ export default function NeuroScopePage() {
         }}
         onSave={addAnnotation}
       />
-    </main>
+    </div>
   );
-}
+});
