@@ -17,6 +17,8 @@ import {
   type PatientSummary,
 } from "@/components/patient-assignment-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { uploadResumableFile } from "@/lib/supabase/resumable-upload";
+import { waitForNicoletSourceJob } from "@/lib/neuroscope/api";
 import { getApiBaseUrl } from "@/lib/api-url";
 import {
   FILE_BUCKET,
@@ -24,7 +26,6 @@ import {
   buildRecordingPaths,
   MAX_EEG_FILE_BYTES,
 } from "@/lib/files";
-import * as tus from "tus-js-client";
 import {
   NeuroScopeViewer,
   type NeuroScopeViewerHandle,
@@ -33,60 +34,6 @@ import {
   useNeuroScopeSession,
   type NeuroScopeBundle,
 } from "@/components/neuroscope/neuroscope-session";
-
-async function uploadResumableFile(
-  file: File,
-  storagePath: string,
-  accessToken: string,
-) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
-  const projectRef = new URL(supabaseUrl).hostname.split(".")[0];
-  const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
-  await new Promise<void>((resolve, reject) => {
-    const upload = new tus.Upload(file, {
-      endpoint,
-      retryDelays: [0, 3000, 5000, 10000, 20000],
-      headers: { authorization: `Bearer ${accessToken}` },
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      metadata: {
-        bucketName: FILE_BUCKET,
-        objectName: storagePath,
-        contentType: "application/octet-stream",
-        cacheControl: "3600",
-      },
-      chunkSize: 6 * 1024 * 1024,
-      onError(error) {
-        reject(error);
-      },
-      onSuccess() {
-        resolve();
-      },
-    });
-    upload.start();
-  });
-}
-
-async function waitForNicoletSourceJob(jobId: string) {
-  for (let attempt = 0; attempt < 1800; attempt += 1) {
-    const response = await fetch(
-      `${getApiBaseUrl()}/source-job/${encodeURIComponent(jobId)}`,
-    );
-    if (!response.ok) {
-      throw new Error(
-        (await response.text()) || "Could not check Nicolet conversion status.",
-      );
-    }
-    const result = await response.json();
-    if (result.status === "completed") return result;
-    if (result.status === "failed") {
-      throw new Error(result.detail || "Nicolet conversion failed.");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-  throw new Error("Nicolet conversion timed out.");
-}
 
 async function prepareNicoletSource(file: File) {
   if (!file.name.toLowerCase().endsWith(".e")) {

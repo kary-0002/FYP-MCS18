@@ -29,6 +29,28 @@ export async function getSessionFile(id: string, filename: string) {
   });
 }
 
+/** Wait for queued Nicolet conversion, with two-second delays and 1,800 attempts. */
+export async function waitForNicoletSourceJob(jobId: string) {
+  const maxAttempts = 1800;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const response = await fetch(
+      `${getApiBaseUrl()}/source-job/${encodeURIComponent(jobId)}`,
+    );
+    if (!response.ok) {
+      throw new Error(
+        (await response.text()) || "Could not check Nicolet conversion status.",
+      );
+    }
+    const result = await response.json();
+    if (result.status === "completed") return result;
+    if (result.status === "failed") {
+      throw new Error(result.detail || "Nicolet conversion failed.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error("Nicolet conversion timed out.");
+}
+
 export type ProgressEvent = {
   id: number;
   message: string;
