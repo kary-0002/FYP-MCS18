@@ -39,10 +39,16 @@ This Final Year project aims to develop a web-based platform to view and annotat
 web-app/
 ├─ backend/                         # FastAPI analysis and report-generation service
 │  ├─ app/
-│  │  ├─ main.py                    # Analysis API routes and in-memory sessions/jobs
+│  │  ├─ main.py                    # FastAPI routes and request handling
+│  │  ├─ state.py                   # Shared analysis sessions, jobs, and progress state
+│  │  ├─ recording_metadata.py      # EDF recording metadata extraction
 │  │  ├─ seizure_detection.py       # Seizure detection pipeline
 │  │  ├─ nicolet_metadata.py        # Nicolet .e metadata extraction
 │  │  ├─ model.py                   # Model support
+│  │  ├─ services/
+│  │  │  ├─ __init__.py
+│  │  │  ├─ progress.py             # Background/report progress tracking
+│  │  │  └─ recording.py            # Recording download, conversion, and preparation
 │  │  ├─ official_seizure_transformer_model.pth
 │  │  └─ report_generation/
 │  │     ├─ *.py                    # EEG features, analysis, and PDF report generation
@@ -61,7 +67,7 @@ web-app/
    │  └─ supabase/                  # Supabase browser, server, and middleware clients
    ├─ public/                       # Static assets
    ├─ styles/                       # Global styles
-   └─ types/                        # Type declarations
+   └─ types/                        # Type declarations                     # Type declarations
 ```
 
 The frontend route tree and backend API are documented in [web-app/ENDPOINTS.md](web-app/ENDPOINTS.md).
