@@ -2,16 +2,12 @@ import os
 import tempfile
 import shutil
 import json
-import subprocess
-from uuid import uuid4
 from pathlib import Path
+from uuid import uuid4
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.concurrency import run_in_threadpool
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from app.seizure_detection import detect_seizures
@@ -19,12 +15,26 @@ from app.nicolet_metadata import extract_nicolet_metadata
 from app.report_generation.mcs18_pipeline import (
     generate_report_from_analysis,
     prepare_analysis,
-    extract_recording_metadata
+)
+from app.recording_metadata import extract_recording_metadata
+
+from app.state import (
+    ANALYSIS_SESSIONS,
+    SOURCE_JOBS,
+    ANALYSIS_PROGRESS,
+    create_analysis_session,
+)
+from app.services.progress import (
+    begin_analysis_progress,
+    update_analysis_progress,
+)
+from app.services.recording import (
+    convert_nicolet_to_edf,
+    download_saved_recording,
+    process_saved_source,
 )
 
 load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_HOST = urlparse(SUPABASE_URL).hostname if SUPABASE_URL else None
 app = FastAPI()
 
 configured_frontend_origins = [
@@ -46,34 +56,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ANALYSIS_SESSIONS = {}
-SOURCE_JOBS = {}
-ANALYSIS_PROGRESS = {}
 MODEL_PATH = os.getenv(
     "SEIZURE_MODEL_PATH",
     "app/official_seizure_transformer_model.pth"
 )
 
-
-def begin_analysis_progress(session_id: str, task: str):
-    ANALYSIS_PROGRESS[(session_id, task)] = {
-        "status": "running", "percent": None, "message": "Starting", "events": [], "next_event_id": 1
-    }
-    return lambda percent, message: update_analysis_progress(session_id, task, percent, message)
-
-
-def update_analysis_progress(session_id: str, task: str, percent, message: str, status="running"):
-    progress = ANALYSIS_PROGRESS.setdefault((session_id, task), {
-        "status": status, "percent": None, "message": "Starting", "events": [], "next_event_id": 1
-    })
-    percent = max(0, min(100, int(percent))) if percent is not None else None
-    progress.update({"status": status, "percent": percent, "message": message})
-    events = progress["events"]
-    if not events or events[-1]["message"] != message:
-        event_id = progress["next_event_id"]
-        progress["next_event_id"] += 1
-        events.append({"id": event_id, "message": message, "percent": percent, "status": status})
-        del events[:-100]
 
 
 @app.get("/analysis-progress/{session_id}/{task}")
@@ -85,94 +72,11 @@ async def get_analysis_progress(session_id: str, task: str):
     })
 
 
-def convert_nicolet_to_edf(source_path, work_dir):
-    source_path = Path(source_path)
-    output_dir = Path(work_dir) / "converted"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    converter = shutil.which("nicolet-e2edf")
-    if converter is None:
-        raise RuntimeError("nicolet-e2edf executable could not be found.")
-    result = subprocess.run(
-        [converter, "--in", str(source_path), "--out", str(output_dir)],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        message = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"Nicolet conversion failed: {message}")
-    edf_files = [
-        path
-        for path in output_dir.iterdir()
-        if path.is_file() and path.suffix.lower() == ".edf"
-    ]
-    if len(edf_files) != 1:
-        raise RuntimeError("Nicolet conversion did not produce exactly one EDF file.")
-    return edf_files[0]
 
 class SavedRecordingRequest(BaseModel):
     url: str
     filename: str
 
-def download_saved_recording(url: str, destination: Path):
-    if not SUPABASE_HOST:
-        raise RuntimeError("SUPABASE_URL is not configured.")
-    parsed = urlparse(url)
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != SUPABASE_HOST
-        or "/storage/v1/object/sign/" not in parsed.path
-    ):
-        raise ValueError("Invalid Supabase Storage URL.")
-    request = Request(url, headers={"User-Agent": "MCS18-SeizureAI"})
-    try:
-        with urlopen(request, timeout=60) as response:
-            with destination.open("wb") as output:
-                shutil.copyfileobj(response, output, length=1024 * 1024)
-    except (HTTPError, URLError) as exc:
-        raise RuntimeError(f"Could not download saved EEG recording: {exc}") from exc
-
-def process_saved_source(job_id: str, url: str, filename: str):
-    original_filename = Path(filename).name
-    work_dir = None
-    try:
-        SOURCE_JOBS[job_id] = {
-            "status": "running",
-            "detail": None
-        }
-        work_dir = tempfile.mkdtemp(prefix="eeg-analysis-")
-        source_path = Path(work_dir) / original_filename
-        download_saved_recording(url, source_path)
-        nicolet_metadata = extract_nicolet_metadata(source_path)
-        eeg_path = convert_nicolet_to_edf(source_path, work_dir)
-        recording_metadata = extract_recording_metadata(eeg_path)
-        recording_metadata["nicolet"] = nicolet_metadata
-        session_id = str(uuid4())
-        ANALYSIS_SESSIONS[session_id] = {
-            "work_dir": work_dir,
-            "eeg_path": str(eeg_path),
-            "source_path": str(source_path),
-            "source_format": "nicolet",
-            "original_filename": original_filename,
-            "nicolet_metadata": nicolet_metadata,
-            "report": None,
-            "recording_metadata": recording_metadata,
-            "background_analysis": None
-        }
-        SOURCE_JOBS[job_id] = {
-            "status": "completed",
-            "session_id": session_id,
-            "source_format": "nicolet",
-            "edf_filename": Path(eeg_path).name,
-            "recording_metadata": recording_metadata,
-            "detail": None
-        }
-    except Exception as exc:
-        if work_dir is not None:
-            shutil.rmtree(work_dir, ignore_errors=True)
-        SOURCE_JOBS[job_id] = {
-            "status": "failed",
-            "detail": str(exc)
-        }
 
 # API ENDPOINTS
 @app.get("/")
@@ -213,18 +117,15 @@ async def post_upload_veeg(
         if nicolet_metadata is not None:
             recording_metadata["nicolet"] = nicolet_metadata
         
-        session_id = str(uuid4())
-        ANALYSIS_SESSIONS[session_id] = {
-            "work_dir": work_dir,
-            "eeg_path": str(eeg_path),
-            "source_path": str(source_path),
-            "source_format": source_format,
-            "original_filename": original_filename,
-            "nicolet_metadata": nicolet_metadata,
-            "report": None,
-            "recording_metadata": recording_metadata,
-            "background_analysis": None
-        }
+        session_id = create_analysis_session(
+            work_dir=work_dir,
+            eeg_path=eeg_path,
+            source_path=source_path,
+            source_format=source_format,
+            original_filename=original_filename,
+            nicolet_metadata=nicolet_metadata,
+            recording_metadata=recording_metadata,
+        )
         return {
             "session_id": session_id,
             "source_format": source_format,
@@ -250,18 +151,15 @@ def post_open_saved_recording(request: SavedRecordingRequest):
     try:
         download_saved_recording(request.url, eeg_path)
         recording_metadata = extract_recording_metadata(eeg_path)
-        session_id = str(uuid4())
-        ANALYSIS_SESSIONS[session_id] = {
-            "work_dir": work_dir,
-            "eeg_path": str(eeg_path),
-            "source_path": str(eeg_path),
-            "source_format": "edf",
-            "original_filename": original_filename,
-            "nicolet_metadata": None,
-            "report": None,
-            "recording_metadata": recording_metadata,
-            "background_analysis": None
-        }
+        session_id = create_analysis_session(
+            work_dir=work_dir,
+            eeg_path=eeg_path,
+            source_path=eeg_path,
+            source_format="edf",
+            original_filename=original_filename,
+            nicolet_metadata=None,
+            recording_metadata=recording_metadata,
+        )
         return {
             "session_id": session_id,
             "source_format": "edf",
