@@ -1101,6 +1101,7 @@ export const NeuroScopeViewer = forwardRef<
       <AnnotationDialog
         range={annotationDialogOpen ? range : null}
         existing={editing}
+        availableChannels={channels.map((channel) => channel.label)}
         defaultChannels={selectedChannelLabels}
         onClose={() => {
           setAnnotationDialogOpen(false);

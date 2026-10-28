@@ -17,6 +17,9 @@ const ANNOTATION_COLORS: Record<string, string> = {
   "Technical issue": "#7b8582",
   Other: "#bd7a9c",
 };
+const roundAnnotationTime = (seconds: number) => Number(seconds.toFixed(3));
+const formatAnnotationInput = (seconds: number) =>
+  roundAnnotationTime(seconds).toFixed(3);
 
 function getTimeTickStep(windowSeconds: number, plotWidth: number) {
   const targetTicks = Math.max(2, Math.floor(plotWidth / 85));
@@ -474,31 +477,37 @@ export function AnnotationDialog({
   onClose,
   onSave,
   existing,
+  availableChannels,
   defaultChannels,
 }: {
   range: { startSec: number; endSec: number } | null;
   onClose: () => void;
   onSave: (annotation: Annotation) => void;
   existing?: Annotation;
+  availableChannels: string[];
   defaultChannels: string[];
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [label, setLabel] = useState(existing?.label || "Seizure"),
     [notes, setNotes] = useState(existing?.notes || ""),
-    [channels, setChannels] = useState(
-      existing ? existing.channels.join(", ") : defaultChannels.join(", "),
+    [selectedChannels, setSelectedChannels] = useState(
+      new Set(existing ? existing.channels : defaultChannels),
     ),
-    [startSec, setStartSec] = useState(range?.startSec ?? 0),
-    [endSec, setEndSec] = useState(range?.endSec ?? 0),
+    [startSec, setStartSec] = useState(
+      formatAnnotationInput(range?.startSec ?? 0),
+    ),
+    [endSec, setEndSec] = useState(
+      formatAnnotationInput(range?.endSec ?? 0),
+    ),
     [formError, setFormError] = useState("");
   useEffect(() => {
     setLabel(existing?.label || "Seizure");
     setNotes(existing?.notes || "");
-    setChannels(
-      existing ? existing.channels.join(", ") : defaultChannels.join(", "),
+    setSelectedChannels(
+      new Set(existing ? existing.channels : defaultChannels),
     );
-    setStartSec(range?.startSec ?? 0);
-    setEndSec(range?.endSec ?? 0);
+    setStartSec(formatAnnotationInput(range?.startSec ?? 0));
+    setEndSec(formatAnnotationInput(range?.endSec ?? 0));
     setFormError("");
   }, [existing, range, defaultChannels]);
   useEffect(() => {
@@ -517,10 +526,12 @@ export function AnnotationDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          const startValue = roundAnnotationTime(Number(startSec));
+          const endValue = roundAnnotationTime(Number(endSec));
           if (
-            !Number.isFinite(startSec) ||
-            !Number.isFinite(endSec) ||
-            endSec <= startSec
+            !Number.isFinite(startValue) ||
+            !Number.isFinite(endValue) ||
+            endValue <= startValue
           ) {
             setFormError("End time must be later than start time.");
             return;
@@ -528,14 +539,11 @@ export function AnnotationDialog({
           onSave({
             ...existing,
             id: existing?.id || crypto.randomUUID(),
-            startSec,
-            endSec,
+            startSec: startValue,
+            endSec: endValue,
             label,
             notes,
-            channels: channels
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean),
+            channels: Array.from(selectedChannels),
             origin: existing?.origin || "reviewer",
             createdAt: existing?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -561,7 +569,11 @@ export function AnnotationDialog({
                 min="0"
                 step="0.001"
                 value={startSec}
-                onChange={(e) => setStartSec(Number(e.target.value))}
+                onChange={(e) => setStartSec(e.target.value)}
+                onBlur={() => {
+                  if (startSec !== "")
+                    setStartSec(formatAnnotationInput(Number(startSec)));
+                }}
               />
             </label>
             <label>
@@ -571,12 +583,16 @@ export function AnnotationDialog({
                 min="0"
                 step="0.001"
                 value={endSec}
-                onChange={(e) => setEndSec(Number(e.target.value))}
+                onChange={(e) => setEndSec(e.target.value)}
+                onBlur={() => {
+                  if (endSec !== "")
+                    setEndSec(formatAnnotationInput(Number(endSec)));
+                }}
               />
             </label>
           </div>
           <small>
-            {formatTime(startSec, true)} – {formatTime(endSec, true)}
+            {formatTime(Number(startSec), true)} – {formatTime(Number(endSec), true)}
           </small>
         </div>
         <label>
@@ -603,14 +619,34 @@ export function AnnotationDialog({
             onChange={(e) => setNotes(e.target.value)}
           />
         </label>
-        <label>
-          Channels
-          <input
-            value={channels}
-            onChange={(e) => setChannels(e.target.value)}
-            placeholder="All visible channels"
-          />
-        </label>
+        <fieldset className="annotation-channel-picker">
+          <legend>Channels</legend>
+          <div className="annotation-channel-options">
+            {Array.from(
+              new Set([...availableChannels, ...(existing?.channels || [])]),
+            ).map((channel) => (
+              <label className="annotation-channel-option" key={channel}>
+                <input
+                  type="checkbox"
+                  checked={selectedChannels.has(channel)}
+                  onChange={() =>
+                    setSelectedChannels((current) => {
+                      const next = new Set(current);
+                      if (next.has(channel)) next.delete(channel);
+                      else next.add(channel);
+                      return next;
+                    })
+                  }
+                />
+                <span>{channel}</span>
+              </label>
+            ))}
+            {availableChannels.length === 0 && (
+              <span className="annotation-channel-empty">No channels available</span>
+            )}
+          </div>
+          <small>Selected channels: {selectedChannels.size}</small>
+        </fieldset>
         <div className="dialog-actions">
           <button type="button" className="button ghost" onClick={onClose}>
             Cancel
